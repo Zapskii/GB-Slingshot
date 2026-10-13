@@ -11,6 +11,7 @@
 #ifndef SIM_H
 #define SIM_H
 
+#include <stddef.h>
 #include <stdint.h>
 #include "tables.h"
 
@@ -84,15 +85,23 @@ typedef struct {
     uint8_t nproj;              /* projectiles in flight this shot, 1..MAX_PROJ */
     uint8_t spent;              /* bit i set: p[i] has finished */
     uint8_t pstate;
-    uint8_t state;
+    /* volatile: SDCC's gbz80 backend clobbers the accumulator after a compare
+     * but still believes it holds this field, so any cached/plain read of it
+     * can be seeded with the difference instead of the value. See the
+     * compiler note in the README. Layout is unchanged, so the byte offsets
+     * tests/emu_replay.py reads still hold. */
+    volatile uint8_t state;
     uint8_t shots_left;
     uint8_t shots_total;
     uint8_t targets_left;
     uint8_t settle_timer;
     uint16_t score;
     uint16_t flight_frames;
-    /* New fields go last: tests/emu_replay.py reads the fields above by byte
-     * offset and would need its constants updated if they move. */
+    /* tests/emu_replay.py reads this struct by byte offset, but the offsets
+     * are regenerated mechanically on every emu-test run by
+     * tests/sim_offsets_probe.c (into build/sim_offsets.json), so new fields
+     * may go anywhere. The emulator checks that refer to a field must still
+     * be updated if its meaning changes. */
     uint8_t nmoves;                     /* valid until the front end consumes them */
     FallMove moves[MAX_FALL_MOVES];
     /* What the front end should voice this frame: the material of the last cell
@@ -100,6 +109,18 @@ typedef struct {
      * so this is data, not a hardware call. Cleared at the top of sim_tick. */
     uint8_t hit_mat;
 } Sim;
+
+/* The ROM builds with SDCC, while tests/sim_offsets_probe.c regenerates the
+ * emulator test's field offsets from this header on the host. The two
+ * layouts agree only while every 2-byte field keeps an even offset (no
+ * struct padding), so hold that invariant by assertion: a new 2-byte field
+ * inserted behind a 1-byte field stops the build here instead of drifting
+ * the emulator checks out of sync. Negative-array typedefs, because a
+ * failed _Static_assert is only a warning on SDCC. */
+typedef char sim_align_p_2byte[(offsetof(Sim, p) % 2 == 0) * 2 - 1];
+typedef char sim_align_proj_2byte[(offsetof(Sim, p[1].vx) % 2 == 0) * 2 - 1];
+typedef char sim_align_score_2byte[(offsetof(Sim, score) % 2 == 0) * 2 - 1];
+typedef char sim_align_flight_2byte[(offsetof(Sim, flight_frames) % 2 == 0) * 2 - 1];
 
 /* ---------- fixed point and projectile motion ---------- */
 
@@ -261,7 +282,8 @@ static uint8_t sim_collapse_step(Sim *s)
     for (x = 0; x < GRID_W; x++) prev_land[x] = 0;
 
     r = GROUND_ROW;
-    while (r--) {
+    while (r > 0) {
+        r--;
         for (x = 0; x < GRID_W; x++) {
             mv[x] = 0;
             cur_land[x] = 0;

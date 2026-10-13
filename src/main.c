@@ -763,19 +763,29 @@ void main(void)
             hide_arc();
         }
 
-        if (sim.state != last_state) {
-            if (sim.state == S_WON || sim.state == S_LOST) {
-                hide_arc();
-                hide_falls();
-                hide_puffs();
-                shake = 0;
-                if (sim.state == S_WON) sfx_jingle(win_notes, 4);
-                else sfx_jingle(lose_notes, 3);
-                show_splash();
-            } else if (sim.state == S_AIM) {
-                arc_dirty = 1;      /* the shot is over, draw the preview again */
+        /* SDCC's gbz80 backend leaves A holding `sim.state - last_state` after
+         * the `!=` below but still believes A is sim.state, so a plain local
+         * would be assigned the difference: on a win (3 - 2 = 1) that matches
+         * neither S_WON nor S_LOST and the splash never draws. sim.state is
+         * declared volatile in sim.h, so initializing st is a real memory
+         * load the backend cannot satisfy from that accumulator; the volatile
+         * on the local also keeps each test below reading through memory. */
+        {
+            volatile uint8_t st = sim.state;
+            if (st != last_state) {
+                if (st == S_WON || st == S_LOST) {
+                    hide_arc();
+                    hide_falls();
+                    hide_puffs();
+                    shake = 0;
+                    if (st == S_WON) sfx_jingle(win_notes, 4);
+                    else sfx_jingle(lose_notes, 3);
+                    show_splash();
+                } else if (st == S_AIM) {
+                    arc_dirty = 1;      /* the shot is over, draw the preview again */
+                }
+                last_state = st;
             }
-            last_state = sim.state;
         }
         update_hud();
     }

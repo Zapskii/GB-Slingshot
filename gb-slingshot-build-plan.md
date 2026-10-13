@@ -129,6 +129,7 @@ Each phase ends with something you can run in mgba.
 
 - **Host tests** for everything in `sim.h` (flight, collisions, damage, collapse, win/lose).
 - **Golden-replay tests:** record a sequence of (angle, power) shots per level and assert the final cell grid hash. This catches regressions when you tweak collapse rules.
+- The replay only covers what it asserts — and a miscompiled front end can corrupt what it reads back: with the SDCC cached-accumulator bug, the state-change block wrote the comparison difference into `last_state` every other settle frame, so a splash drew or not depending on where a shot's settle frames happened to stop. The golden replay's recorded game and its lose replay happened to land on the draws; the early-win session in `tests/emu_replay.py` (level 1, one shot, 3 stars) covers the other branch — the multi-star splash rows and star banking the golden game never shows. `make check-asm` guards the miscompile itself on whichever toolchain builds the ROM (see the compiler note in the README).
 - **Level solvability check:** a script that brute-forces the angle/power table per level and reports whether any shot sequence can win, so you do not ship unwinnable levels.
 - **Manual play** in mgba each phase, plus a check on real hardware or a flash cart before release.
 

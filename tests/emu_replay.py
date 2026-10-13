@@ -5,8 +5,9 @@ Selects the recorded level on the level select screen, plays the three golden
 shots, and compares the emulated game state and grid hash with the host-side
 values. That checks the SDCC build behaves like the gcc one. It also checks the
 front end, which the host tests cannot reach: that the collapse slides sprites,
-that the window HUD tracks the score, that the win and lose splashes replace it,
-and that the star ratings survive a reset.
+that the window HUD tracks the score, that the win and lose splashes replace it
+(a second replay wins with shots to spare, so the 3-star splash and banking are
+covered too), and that the star ratings survive a reset.
 
 The save check needs two emulator sessions: the first plays and saves, the
 second starts from a cold boot and reads the .sav back.
@@ -14,6 +15,7 @@ Needs: pip install pyboy pillow
 
     python3 tests/emu_replay.py build/slingshot.gb [screenshots.png]
 """
+import json
 import os
 import re
 import sys
@@ -21,18 +23,28 @@ import sys
 from PIL import Image
 from pyboy import PyBoy
 
-CELLS = 360
 GRID_W, GRID_H = 20, 18                # the play field; the map itself is 32x32
-PROJ_BYTES = 10                         # x, y, xf, yf, vx, vy
-MAX_PROJ = 3                            # sim.h MAX_PROJ: a PT_SPLIT shot flies three
-PFLAGS = 4                              # ptype, pused, nproj, spent
-# three grids, the Proj array, those flags, then pstate, state
-OFF_MAT, OFF_HP = 0, CELLS
-OFF_STATE = 3 * CELLS + PROJ_BYTES * MAX_PROJ + PFLAGS + 1
-OFF_SHOTS_LEFT = OFF_STATE + 1
-OFF_TARGETS = OFF_STATE + 3
-OFF_SCORE = OFF_STATE + 5               # uint16, little endian
-S_AIM, S_FLIGHT, S_SETTLE, S_WON, S_LOST = range(5)
+# The Sim byte layout comes from build/sim_offsets.json, which make emu-test
+# regenerates from the real header (tests/sim_offsets_probe.c) before every
+# run. Nothing here is hand-maintained, so struct edits stay in sync instead
+# of shipping silently-wrong emulator checks.
+if not os.path.exists("build/sim_offsets.json"):
+    sys.exit("tests/emu_replay.py: build/sim_offsets.json is missing; run "
+             "make emu-test, or compile tests/sim_offsets_probe.c once")
+with open("build/sim_offsets.json") as _f:
+    _SIM = {k: int(v) for k, v in json.load(_f).items()}
+CELLS = _SIM["cells"]
+OFF_MAT = _SIM["mat"]
+OFF_HP = _SIM["hp"]
+OFF_STATE = _SIM["state"]
+OFF_SHOTS_LEFT = _SIM["shots_left"]
+OFF_TARGETS = _SIM["targets_left"]
+OFF_SCORE = _SIM["score"]               # uint16, little endian
+S_AIM = _SIM["s_aim"]
+S_FLIGHT = _SIM["s_flight"]
+S_SETTLE = _SIM["s_settle"]
+S_WON = _SIM["s_won"]
+S_LOST = _SIM["s_lost"]
 
 # Front-end constants from src/main.c and src/gfx.h.
 REG_WY = 0xFF4A
@@ -60,6 +72,12 @@ GOLDEN_LEVEL = 2
 GOLDEN_HASH = 0xC6967041
 GOLDEN_SCORE = 120
 SHOTS = [(0, 7), (0, 5), (0, 5)]        # (angle index, power index)
+# An early win with shots to spare: level 1 falls to this single shot, leaving
+# two and rating 3 stars. The golden replay wins on its last shot, so this
+# session in main() covers the other branch: the splash, the 3-star row, and a
+# 3-star bank, all reached from a win the golden game never makes. Found by a
+# sim search (sim_load_ascii + sim_fire); level 1 needs no special projectile.
+EARLY_SHOTS = [(0, 4)]
 START_ANGLE, START_POWER = 3, 1         # main.c AIM_ANGLE / AIM_POWER
 SHAKE_PX = 2                           # main.c shake_off peaks at 2
 
@@ -447,8 +465,40 @@ def main():
     g2.snap("saved")
     g2.stop()
 
+    # ---------- session 3: an early win, with shots to spare ----------
+    # The golden replay wins on its last shot; most real play does not. This
+    # session wins level 1 with two shots still in the bank, so the splash,
+    # the 3-star row and 3-star banking are all exercised on the branch the
+    # golden game never takes.
+    g3 = Game(rom)
+    check(g3.boot(), "the ROM boots for the early win")
+    g3.pick_level(0)                        # level 1 needs no special projectile
+    g3.press("a")                           # A starts the level
+    g3.tick(6)
+    aim_to(g3, *EARLY_SHOTS[0], START_ANGLE, START_POWER)
+    g3.press("a")
+    play_until_idle(g3)
+    check(g3.byte(OFF_STATE) == S_WON and g3.byte(OFF_SHOTS_LEFT) == 2,
+          "one shot wins level 1 with 2 to spare (state %d, shots %d)"
+          % (g3.byte(OFF_STATE), g3.byte(OFF_SHOTS_LEFT)))
+    check(wait_splash(g3), "the early win still draws the splash")
+    check(g3.mem[REG_WY] == 0, "early-win splash covers the screen (WY=%d)"
+          % g3.mem[REG_WY])
+    check(g3.win_text(4).strip() == "YOU WIN",
+          'early-win splash says "YOU WIN" (got %r)' % g3.win_text(4))
+    for col in (7, 9, 11):                  # 3 stars centred on tile 10
+        check(g3.win_row(7)[col] == TILE_STAR,
+              "3-star row drawn at column %d (got %d)" % (col, g3.win_row(7)[col]))
+    g3.snap("won-early")
+    g3.press("start")                       # bank the 3 stars, move on
+    g3.tick(8)
+    check(g3.mem[SRAM + 1] == 3,
+          "the 3-star early win is banked for level 1 (got %d)" % g3.mem[SRAM + 1])
+    check(g3.byte(OFF_STATE) == S_AIM, "START after the early win loads level 2")
+    g3.stop()
+
     if sheet_path:
-        images = g.images + g2.images
+        images = g.images + g2.images + g3.images
         w, h = images[0][1].size
         scale, pad = 2, 8
         sheet = Image.new("RGB", (len(images) * (w * scale + pad) - pad, h * scale), (255, 0, 255))

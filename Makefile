@@ -1,7 +1,8 @@
 # GB-Slingshot
 #   make            build build/slingshot.gb (GBDK-2020 via lcc, or Docker if lcc isn't installed)
 #   make test       host-side tests for src/sim.h (no GBDK needed)
-#   make run        build, then open in mgba
+#   make check-asm  scan the SDCC assembly for the cached-accumulator miscompile
+#   make check-levels   brute-force that every level is winnable in its shot budget
 #   make emu-test   replay the golden game through the ROM in a headless emulator (pip install pyboy pillow)
 #   make docker-image   build the GBDK-2020 toolchain image used when lcc isn't on PATH
 #   make clean
@@ -20,7 +21,7 @@ else
 LCC = lcc
 endif
 
-.PHONY: all test emu-test run clean docker-image gen
+.PHONY: all test check-asm check-levels emu-test run clean docker-image gen
 
 all: $(ROM)
 
@@ -42,12 +43,35 @@ $(ROM): src/main.c src/sim.h $(GEN)
 
 build/test_sim: tests/test_sim.c src/sim.h $(GEN)
 	@mkdir -p build
-	$(HOST_CC) -std=c99 -O1 -Wall -Wextra -Wno-unused-function -Isrc tests/test_sim.c -o $@ -lm
+	$(HOST_CC) -std=c99 -O1 -Wall -Wextra -Wno-unused-function \
+	           -fsanitize=undefined,implicit-conversion -fno-sanitize-recover=all \
+	           -Isrc tests/test_sim.c -o $@ -lm
 
 test: build/test_sim
 	./build/test_sim
 
-emu-test: $(ROM)
+check-asm:
+	@mkdir -p build
+	$(LCC) -S -o build/main.asm src/main.c
+	$(LCC) -S -o build/gfx.asm src/gfx.c
+	@$(PYTHON) tools/check_asm.py --self-test
+	@$(PYTHON) tools/check_asm.py build/main.asm build/gfx.asm
+
+build/check_levels: tools/check_levels.c src/sim.h src/levels.h src/tables.h
+	@mkdir -p build
+	$(HOST_CC) -std=c99 -O1 -Wall -Wextra \
+	           -fsanitize=undefined,implicit-conversion -fno-sanitize-recover=all \
+	           -Isrc tools/check_levels.c -o $@ -lm
+
+check-levels: build/check_levels
+	./build/check_levels
+
+build/sim_offsets.json: tests/sim_offsets_probe.c src/sim.h src/levels.h src/tables.h
+	@mkdir -p build
+	$(HOST_CC) -std=c99 -Wall -Wno-unused-function -Isrc tests/sim_offsets_probe.c -o build/sim_offsets_probe
+	./build/sim_offsets_probe > $@
+
+emu-test: check-asm $(ROM) build/sim_offsets.json
 	$(PYTHON) tests/emu_replay.py $(ROM)
 
 run: $(ROM)
