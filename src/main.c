@@ -43,6 +43,10 @@
 #define SHAKE_FRAMES 10
 #define SHAKE_MIN_FALLS 2       /* cells falling in one step */
 
+/* The chain flash: a fall that destroyed cells scores double, and a "CHAIN"
+ * line appears under the HUD for this many frames. Tuned by playing. */
+#define CHAIN_FRAMES 30
+
 #define SLING_COL 2             /* left tile of the two-tile slingshot */
 #define SLING_ROW 12
 
@@ -88,12 +92,20 @@ static uint8_t shake;               /* frames of shake left */
 
 static uint8_t angle, power;
 static uint8_t ptype;               /* PT_*, chosen with B before firing */
+/* Each type flies its own sprite: the aim ball and the flight ball wear the
+ * tile of the armed type, so B visibly changes what you are about to fire. */
+static const uint8_t ball_tile[PT_COUNT] = {
+    TILE_BALL, TILE_BALL_B, TILE_BALL_C, TILE_BALL_D
+};
 static uint8_t keys, prev_keys, last_dirs, hold;
 static uint8_t last_state;
 static uint8_t arc_dirty;
 static uint8_t win_mode;            /* which of HUD / splash / select the window holds */
 static uint8_t hud_shots, hud_targets, hud_type;
 static uint16_t hud_score;
+
+static uint8_t chain_frames;        /* remaining frames of the chain flash */
+static uint16_t chain_shown;        /* points the flash is displaying */
 
 static uint8_t level;               /* the level being played */
 static uint8_t cursor;              /* the level the select screen is pointing at */
@@ -479,6 +491,26 @@ static void win_clear(uint8_t rows)
         for (x = 0; x < WIN_W; x++) set_win_tile_xy(x, y, TILE_BLANK);
 }
 
+/* The chain flash slides the window up one row during play so its blank row 1
+ * comes on screen under the live HUD, where "CHAIN +nn" is drawn. Every
+ * restore is gated on win_mode: the splash and select screens set their own
+ * window position, and a late restore would truncate a full-screen splash. */
+static void chain_flash(void)
+{
+    if (!chain_frames) return;
+    if (win_mode != W_HUD) {
+        chain_frames = 0;       /* splash/select own the window now */
+        return;
+    }
+    if (chain_frames == CHAIN_FRAMES) {         /* first frame: draw (also redraws) */
+        win_text(1, 1, "CHAIN");
+        win_num(7, 1, chain_shown, 3);
+        move_win(7, (uint8_t)(HUD_ROW - 8));
+    }
+    chain_frames--;
+    if (!chain_frames) move_win(7, HUD_ROW);
+}
+
 static void update_hud(void)
 {
     if (win_mode != W_HUD) return;
@@ -496,7 +528,7 @@ static void update_hud(void)
     set_win_tile_xy(9, 0, char_tile((char)('A' + ptype)));  /* projectile type */
     win_text(10, 0, "SCORE");
     win_num(16, 0, sim.score, 4);
-    move_win(7, HUD_ROW);
+    move_win(7, chain_frames ? (uint8_t)(HUD_ROW - 8) : HUD_ROW);
 }
 
 static void show_splash(void)
@@ -563,6 +595,7 @@ static void start_level(uint8_t n)
     hud_targets = 0xFF;
     hud_type = 0xFF;
     hud_score = 0xFFFF;
+    chain_frames = 0;
     win_mode = W_HUD;
     update_hud();
     last_state = sim.state;
@@ -606,11 +639,13 @@ static void handle_aim(void)
 static void draw_proj(void)
 {
     uint8_t i, n = sim.pstate == P_FLYING ? sim.nproj : 0;
-    if (n) place_sprite(SPR_BALL, sim.p[0].x, sim.p[0].y);
-    else move_sprite(SPR_BALL, 0, 0);
+    if (n) {
+        set_sprite_tile(SPR_BALL, ball_tile[sim.ptype]);
+        place_sprite(SPR_BALL, sim.p[0].x, sim.p[0].y);
+    } else move_sprite(SPR_BALL, 0, 0);
     for (i = 1; i < MAX_PROJ; i++) {
         if (i < n) {
-            set_sprite_tile(SPR_DOT0 + i - 1, TILE_BALL);
+            set_sprite_tile(SPR_DOT0 + i - 1, ball_tile[sim.ptype]);
             place_sprite(SPR_DOT0 + i - 1, sim.p[i].x, sim.p[i].y);
         } else {
             move_sprite(SPR_DOT0 + i - 1, 0, 0);
@@ -746,13 +781,20 @@ void main(void)
                 update_arc();
                 arc_dirty = 0;
             }
-            if (sim.state == S_AIM) place_sprite(SPR_BALL, LAUNCH_X, LAUNCH_Y);
+            if (sim.state == S_AIM) {
+                set_sprite_tile(SPR_BALL, ball_tile[ptype]);
+                place_sprite(SPR_BALL, LAUNCH_X, LAUNCH_Y);
+            }
         } else if (sim.state == S_FLIGHT || sim.state == S_SETTLE) {
             uint8_t was_flying = sim.state == S_FLIGHT;
             if ((keys & J_A) && !(prev_keys & J_A) && sim_trigger(&sim)) sfx_blip();
             sim_tick(&sim);
             sfx_hit_events();
             shake_events();
+            if (sim.chain_points) {
+                chain_shown = sim.chain_points;     /* 0 next frame; see chain_flash */
+                chain_frames = CHAIN_FRAMES;
+            }
             age_falls();        /* after the step, so releases land on a fresh grid */
             spawn_falls();
             spawn_puffs(was_flying);
@@ -778,6 +820,7 @@ void main(void)
                     hide_falls();
                     hide_puffs();
                     shake = 0;
+                    chain_frames = 0;   /* the splash owns the window now */
                     if (st == S_WON) sfx_jingle(win_notes, 4);
                     else sfx_jingle(lose_notes, 3);
                     show_splash();
@@ -787,6 +830,7 @@ void main(void)
                 last_state = st;
             }
         }
+        chain_flash();
         update_hud();
     }
 }

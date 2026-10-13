@@ -39,7 +39,7 @@ enum { S_AIM = 0, S_FLIGHT, S_SETTLE, S_WON, S_LOST };
 enum { P_IDLE = 0, P_FLYING, P_SPENT };
 
 /* Projectile types. The ability fires on a second A press while in flight. */
-enum { PT_STANDARD = 0, PT_BOOST, PT_SPLIT, PT_COUNT };
+enum { PT_STANDARD = 0, PT_BOOST, PT_SPLIT, PT_PIERCE, PT_COUNT };
 
 /* A shot can be more than one projectile at once: PT_SPLIT fans into three.
  * p[0] is always the one the front end steers its ball sprite with. */
@@ -97,6 +97,11 @@ typedef struct {
     uint8_t settle_timer;
     uint16_t score;
     uint16_t flight_frames;
+    /* What the front end should show this frame: points just added for cells
+     * destroyed by the collapse (scored double, the chain bonus), 0 for
+     * nothing. Like hit_mat this is data, not a hardware call. Cleared at
+     * the top of sim_tick. */
+    uint16_t chain_points;
     /* tests/emu_replay.py reads this struct by byte offset, but the offsets
      * are regenerated mechanically on every emu-test run by
      * tests/sim_offsets_probe.c (into build/sim_offsets.json), so new fields
@@ -121,6 +126,7 @@ typedef char sim_align_p_2byte[(offsetof(Sim, p) % 2 == 0) * 2 - 1];
 typedef char sim_align_proj_2byte[(offsetof(Sim, p[1].vx) % 2 == 0) * 2 - 1];
 typedef char sim_align_score_2byte[(offsetof(Sim, score) % 2 == 0) * 2 - 1];
 typedef char sim_align_flight_2byte[(offsetof(Sim, flight_frames) % 2 == 0) * 2 - 1];
+typedef char sim_align_chain_2byte[(offsetof(Sim, chain_points) % 2 == 0) * 2 - 1];
 
 /* ---------- fixed point and projectile motion ---------- */
 
@@ -330,8 +336,13 @@ static uint8_t sim_collapse_step(Sim *s)
                 cur_land[x] = 1;
                 activity++;
                 if (f >= 2) {
+                    /* A fall that destroys cells scores them again: the
+                     * chain bonus. Recorded in chain_points for the flash. */
+                    uint16_t before = s->score;
                     damage_cell(s, bidx, (uint8_t)(f - 1));
                     damage_cell(s, idx, (uint8_t)(f - 1));
+                    s->chain_points = (uint16_t)(s->chain_points + (s->score - before));
+                    s->score = (uint16_t)(s->score + (s->score - before));
                 }
             }
         }
@@ -358,6 +369,13 @@ static uint8_t proj_check_collision(Sim *s, uint8_t i)
         bucket = speed_bucket(p->vx, p->vy);
         if (damage_cell(s, idx, bucket)) {
             /* broke through, but slower */
+            p->vx = (int16_t)(p->vx - (p->vx >> BREAK_SLOW_SHIFT));
+            p->vy = (int16_t)(p->vy - (p->vy >> BREAK_SLOW_SHIFT));
+        } else if (s->ptype == PT_PIERCE && s->pused && s->mat[idx] != M_GROUND) {
+            /* drill: with the ability spent, the ball keeps flying through
+             * the cell it dented. The same cell takes the dent again on
+             * every pass, so stone dies after two heavy overlaps. Ground
+             * has zero damage in the table and stops the ball as ever. */
             p->vx = (int16_t)(p->vx - (p->vx >> BREAK_SLOW_SHIFT));
             p->vy = (int16_t)(p->vy - (p->vy >> BREAK_SLOW_SHIFT));
         } else {
@@ -407,7 +425,8 @@ static uint8_t sim_fire(Sim *s, uint8_t angle, uint8_t power)
 }
 
 /* The second A press. Each projectile type spends its one ability here:
- * PT_BOOST speeds the ball up (so it hits harder), PT_SPLIT fans it into three.
+ * PT_BOOST speeds the ball up (so it hits harder), PT_SPLIT fans it into
+ * three, PT_PIERCE turns it into a drill for the rest of the flight.
  * Returns 1 if something happened. */
 static uint8_t sim_trigger(Sim *s)
 {
@@ -439,6 +458,12 @@ static uint8_t sim_trigger(Sim *s)
         s->nproj = MAX_PROJ;
         return 1;
     }
+    if (s->ptype == PT_PIERCE) {
+        /* PT_PIERCE's ability: from here on (see proj_check_collision) the
+         * ball drills through cells it dents without stopping. */
+        s->pused = 1;
+        return 1;
+    }
     return 0;
 }
 
@@ -446,6 +471,7 @@ static uint8_t sim_trigger(Sim *s)
 static void sim_tick(Sim *s)
 {
     s->hit_mat = M_EMPTY;       /* one frame of events: the front end reads them now */
+    s->chain_points = 0;
     if (s->state == S_FLIGHT) {
         sim_flight_frame(s);
         if (s->pstate == P_SPENT) {

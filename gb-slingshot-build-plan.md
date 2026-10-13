@@ -6,7 +6,7 @@ Working title: **GB-Slingshot** (see "Theme and IP" below before settling on art
 
 A single-screen-per-level slingshot/destruction game for the original DMG Game Boy. Fling a limited number of projectiles at structures built from wood, stone and ice, and knock out every target. No game engine, same approach as GB-Protector and GB-Draughts.
 
-**v1 scope:** 3 projectile types, 3 materials plus targets, 30 levels, title screen, level select, battery save for stars, SFX.
+**v1 scope:** 4 projectile types (standard, boost, split, pierce), 3 materials plus targets, 30 levels, title screen, level select, battery save for stars, SFX.
 **Stretch:** music, SGB border, 100+ levels, GBC colour palette.
 
 ## Theme and IP
@@ -115,9 +115,10 @@ Each phase ends with something you can run in mgba.
 - Type A: standard.
 - Type B: speed boost on a second A press (more damage to stone).
 - Type C: splits into three on a second A press.
-- Optional type D: explosive, damages a radius of cells.
+- Type D: the pierce drill — a second A press turns the ball into a drill that keeps flying through the cells it dents for the rest of the flight (ground still stops it). Shipped instead of the explosive idea; the drill is a new damage *mode* the other three can't imitate, and the solvability check proved levels 11 to 20 winnable under it. Each type also flies its own ball tile so the B cycle reads.
 - Each ability is a few lines in `sim.h` plus tests.
 - **Done when:** levels 11 to 20 each need a particular projectile type.
+- Open: no level yet declares `# needs D` — design some pierce puzzle levels (22+).
 
 ### Phase 6: Polish (open-ended)
 - Title screen, particle puffs, screen shake on big collapses, sound effects.
@@ -130,7 +131,7 @@ Each phase ends with something you can run in mgba.
 - **Host tests** for everything in `sim.h` (flight, collisions, damage, collapse, win/lose).
 - **Golden-replay tests:** record a sequence of (angle, power) shots per level and assert the final cell grid hash. This catches regressions when you tweak collapse rules.
 - The replay only covers what it asserts — and a miscompiled front end can corrupt what it reads back: with the SDCC cached-accumulator bug, the state-change block wrote the comparison difference into `last_state` every other settle frame, so a splash drew or not depending on where a shot's settle frames happened to stop. The golden replay's recorded game and its lose replay happened to land on the draws; the early-win session in `tests/emu_replay.py` (level 1, one shot, 3 stars) covers the other branch — the multi-star splash rows and star banking the golden game never shows. `make check-asm` guards the miscompile itself on whichever toolchain builds the ROM (see the compiler note in the README).
-- **Level solvability check:** a script that brute-forces the angle/power table per level and reports whether any shot sequence can win, so you do not ship unwinnable levels.
+- **Level solvability check:** `make check-levels` (`tools/check_levels.c`) brute-forces the angle/power table per level — including all projectile types and the mid-flight ability at sampled trigger frames — and reports a win line, "unwinnable" or "budget exceeded" for each. `--par` prints the measured minimum winning shots per level; that table drove the difficulty pass (levels 2 and 5-9 retuned to `# shots 2`).
 - **Manual play** in mgba each phase, plus a check on real hardware or a flash cart before release.
 
 ## Risks and how to handle them

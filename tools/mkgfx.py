@@ -131,6 +131,25 @@ TILES += [("PUFF", [
     "00000000", "00000000", "00333000", "03322300",
     "00322300", "00333000", "00000000", "00000000"])]
 
+# One ball tile per projectile type, appended after everything else: the aim
+# and flight sprites swap between them with the armed type (main.c ball_tile[]),
+# and TILE_BALL keeps the standard ball so every tile index above stays put.
+#   B boost: the circle with a light streak where its eyes were - blurred in
+#   motion, about to speed up.
+#   C split: the circle cut into three wedges, the shape it fans into.
+#   D pierce: a dart - the drill, pointed where it is going.
+TILES += [
+    ("BALL_B", [
+        "00333300", "03222230", "32211223", "32211223",
+        "32222223", "32222223", "03222230", "00333300"]),
+    ("BALL_C", [
+        "00333300", "03222230", "32200223", "32002223",
+        "32002223", "32200223", "03222230", "00333300"]),
+    ("BALL_D", [
+        "00000330", "00003330", "00033330", "00333330",
+        "00333330", "00033330", "00003330", "00000330"]),
+]
+
 
 def encode(rows):
     out = []

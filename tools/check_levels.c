@@ -220,7 +220,9 @@ static void print_shots(const Layer layers[], unsigned d, size_t win_idx,
     printf("        win in %u shots:", d);
     for (k = 0; k < (int)d; k++) {
         printf(" %s a%u p%u",
-               shots[k][0] == PT_STANDARD ? "" : shots[k][0] == PT_BOOST ? "B" : "S",
+               shots[k][0] == PT_STANDARD ? "" :
+               shots[k][0] == PT_BOOST ? "B" :
+               shots[k][0] == PT_SPLIT ? "S" : "P",
                shots[k][1], shots[k][2]);
         if (shots[k][3] != 255)
             printf(" (ability at frame %u)", shots[k][3]);
@@ -228,8 +230,12 @@ static void print_shots(const Layer layers[], unsigned d, size_t win_idx,
     printf("\n");
 }
 
-/* Search one level. Returns 1 winnable, 0 unwinnable, -1 out of budget. */
-static int solve_level(unsigned level, long states_budget, long sims_budget, int verbose)
+/* Search one level. Returns 1 winnable, 0 unwinnable, -1 out of budget.
+ * When par_out is not NULL it receives the number of shots the found win
+ * took - the BFS expands whole layers in shot-count order, so that is the
+ * minimum shot count that can win, within the sampled trigger set. */
+static int solve_level(unsigned level, long states_budget, long sims_budget,
+                       int verbose, unsigned *par_out)
 {
     const unsigned shots = level_shots[level];
     Sim init = { 0 };
@@ -239,6 +245,7 @@ static int solve_level(unsigned level, long states_budget, long sims_budget, int
     int verdict = 0;
     const uint8_t start_why[4] = { 0, 0, 0, 255 };
 
+    if (par_out) *par_out = 0;
     sim_load_ascii(&init, level_rows[level], level_height[level], shots);
     seen_init(&seen, states_budget);
     {   uint64_t h1, h2;
@@ -276,6 +283,7 @@ static int solve_level(unsigned level, long states_budget, long sims_budget, int
                 play_to_end(&s2, trigger_t);
                 if (s2.state == S_WON) {
                     print_shots(layers, d, i, shot);
+                    if (par_out) *par_out = d;
                     verdict = 1;
                     break;
                 }
@@ -306,7 +314,7 @@ int main(int argc, char **argv)
 {
     long states_budget = STATES_BUDGET, sims_budget = SIMS_BUDGET;
     unsigned level, lo = 0, hi = NUM_LEVELS - 1;
-    int verbose = 0, bad = 0, dense = 0;
+    int verbose = 0, bad = 0, dense = 0, par = 0;
     unsigned i;
     clock_t start = clock();
 
@@ -319,6 +327,8 @@ int main(int argc, char **argv)
             sims_budget = atol(argv[i]);
         } else if (!strcmp(argv[i], "--dense")) {
             dense = 1;
+        } else if (!strcmp(argv[i], "--par")) {
+            par = 1;
         } else if (!strcmp(argv[i], "-v")) {
             verbose = 1;
         } else {
@@ -329,9 +339,25 @@ int main(int argc, char **argv)
     trigger_ts_init(dense);
 
     for (level = lo; level <= hi; level++) {
-        int r = solve_level(level, states_budget, sims_budget, verbose);
-        printf("%s level %u: %s\n", verdict_name(r), level + 1, verdict_text(r));
-        if (r != 1) bad = 1;
+        if (par) {
+            /* Par table: minimum shots that can win per level, next to the
+             * level's configured budget. LOW marks a win that leaves the
+             * 3-star threshold (two shots) to spare - levels flagged LOW
+             * hand out three stars for free. */
+            unsigned par_d = 0;
+            int r = solve_level(level, states_budget, sims_budget, verbose, &par_d);
+            if (r == 1)
+                printf("PAR level %u: budget %u par %u%s\n", level + 1,
+                       level_shots[level], par_d,
+                       (int)par_d <= (int)level_shots[level] - 2 ? "  LOW" : "");
+            else
+                printf("PAR level %u: %s\n", level + 1, verdict_text(r));
+            if (r != 1) bad = 1;
+        } else {
+            int r = solve_level(level, states_budget, sims_budget, verbose, NULL);
+            printf("%s level %u: %s\n", verdict_name(r), level + 1, verdict_text(r));
+            if (r != 1) bad = 1;
+        }
     }
     printf("        checked %ld shot sims against levels %u-%u in %.1fs\n",
            total_sims, lo + 1, hi + 1,

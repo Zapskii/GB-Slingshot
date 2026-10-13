@@ -13,7 +13,7 @@ See `gb-slingshot-build-plan.md` for the full plan.
 | 2. Rendering and aiming | Done. D-pad aiming, preview arc, firing, cells break on screen. ROM replay matches the host golden hash |
 | 3. Collapse animation, win/lose screens, HUD | Done. Collapsing cells slide as sprites, a window-layer HUD tracks shots/targets/score, win and lose splash screens |
 | 4. Levels and progression | Done. 10 levels as ASCII files, a level select, a star rating from shots left, and a battery save so the stars survive a reset |
-| 5. Projectile variety | Done. Three projectile types, a second A press mid-flight to use the type's ability, levels 11-20 each gated on one type |
+| 5. Projectile variety | Done. Four projectile types, a second A press mid-flight to use the type's ability, levels 11-20 each gated on one type |
 | 6. Polish (open-ended) | Started. Sound effects written straight to the APU: launch, wood/stone/ice impacts pitched by material, a target pop, and win and lose jingles. A shot kicks up a puff of dust where it lands, and a collapse of two or more cells shakes the screen. The Super Game Boy border and levels 21-30 are not built |
 
 ## Commands
@@ -30,7 +30,7 @@ If GBDK is installed somewhere other than the path baked into `lcc`, set `GBDKDI
 
 ## Controls
 
-The game opens on the level select, which doubles as the title screen: left/right picks a level and shows its best star rating, A starts it. D-pad up/down changes the angle (5 to 80 degrees), left/right changes the power, A fires. B cycles the projectile type before you fire, and a **second A press while the shot is in flight** spends that type's one ability. START restarts the level, or after a win banks the star and loads the next level; SELECT goes back to the level select. The dotted arc shows the shot's path ignoring the structure. A window-layer bar under the play field shows shots left, targets left, the current projectile type and the score; when the game ends, a splash screen covers the play field until START is pressed.
+The game opens on the level select, which doubles as the title screen: left/right picks a level and shows its best star rating, A starts it. D-pad up/down changes the angle (5 to 80 degrees), left/right changes the power, A fires. B cycles the projectile type before you fire — the ball in the slingshot shows the armed type's own tile — and a **second A press while the shot is in flight** spends that type's one ability. START restarts the level, or after a win banks the star and loads the next level; SELECT goes back to the level select. The dotted arc shows the shot's path ignoring the structure. A window-layer bar under the play field shows shots left, targets left, the current projectile type and the score; when the game ends, a splash screen covers the play field until START is pressed.
 
 Stars are kept in cartridge RAM, so they survive a reset, and the level select opens on the first level you have not beaten.
 
@@ -41,6 +41,7 @@ Stars are kept in cartridge RAM, so they survive a reset, and the level select o
 | **A** standard | none |
 | **B** boost | the shot speeds up 50% on the spot, same direction, which is one speed bucket more damage and more range |
 | **C** split | the shot fans into three, each shard rotated a little off the parent's heading |
+| **D** pierce | the ball becomes a drill: for the rest of the flight it keeps flying through the cells it dents, grinding them down instead of stopping — ground still stops it |
 
 The fan is a cheap rotation (`vx ± vy>>3`, `vy ± vx>>3`) rather than a trig table: no table to store, and the shift keeps it inside `int16_t` without ever going to 32-bit. `SPLIT_NUDGE` is the knob.
 
@@ -69,7 +70,11 @@ tests/sim_offsets_probe.c  prints the Sim layout as JSON; make emu-test regenera
 
 ## Levels
 
-Each level is a plain text file, 20 characters per row, aligned to the bottom of the grid, drawn with `W` wood, `S` stone, `I` ice, `T` target and `.` empty. An optional `# shots N` line sets that level's shot budget (default 3) and an optional `# needs A|B|C` line declares the projectile type the level is built around (default A). Files are played in name order, so `01.txt` is level 1. `tools/mklevels.py` turns them into `src/levels.h`, and the select screen shows `NEEDS B` for a level that asks for one.
+Each level is a plain text file, 20 characters per row, aligned to the bottom of the grid, drawn with `W` wood, `S` stone, `I` ice, `T` target and `.` empty. An optional `# shots N` line sets that level's shot budget (default 3) and an optional `# needs A|B|C|D` line declares the projectile type the level is built around (default A). Files are played in name order, so `01.txt` is level 1. `tools/mklevels.py` turns them into `src/levels.h`, and the select screen shows `NEEDS B` for a level that asks for one.
+
+There is a fourth type, `D`, the pierce drill: a second A press mid-flight turns the ball into a drill that keeps flying through the cells it dents until the ability shot ends — nothing level-specific uses it yet, it is live through the normal B cycle.
+
+Shot budgets are measured too: `./build/check_levels --par` prints, per level, the minimum number of shots any search can win in (`par`, over the sampled trigger set) beside the configured budget. Level 1's stone box and the golden-replay level 3 keep their 3-shot budget on purpose (the emulator regression sessions pin them), but levels 2 and 4-9 were measured at par 1 against a budget of 3 — three stars for two spare shots, for free — and were retuned to `# shots 2`. On a budget of par+1 the best a finish can leave is one spare shot, so those levels now top out at two stars; that is the tightening doing its job.
 
 The difficulty is measured, not guessed, and `test_levels_are_winnable` does the measuring: it plays every level on its own budget with a greedy brute force over all 128 angle/power pairs and every type, and fails if no type can finish it. It also prints how many first shots win each level outright — levels 1-10 are ordered by that number, so the file order is the measured difficulty order. Level 7's glass box is the one that has drifted out of it (8 one-shot wins against level 6's 2) since breaking through a cell started costing one damage bucket instead of two, so it wants a look when the levels are next reordered. It checks each level is stable before the first shot too, which catches a cell that would collapse under the player's feet.
 
@@ -85,6 +90,7 @@ The difficulty is measured, not guessed, and `test_levels_are_winnable` does the
 - The sim reports the material of the last cell it damaged (`Sim.hit_mat`) and the front end voices it, so every hit makes a crunch pitched by material and a target pops — including a hit that only dents a cell and leaves it cracked. Sound is the front end's business: `sim.h` has no hardware calls, it just says what happened.
 - The same event drives the puff of dust: four specks are thrown out of the point the ball hit, which is the one place the front end learns an impact happened. A cell shattering when a collapse lands it on something does not puff, because the front end cannot tell that from a cell that merely moved away. The specks carry their own twelve-frame life and are aged every frame whatever the simulation is doing, so a burst cannot outlive the shot that caused it.
 - A collapse step that moves two or more cells shakes the background for ten frames. Collapses are small — over every shot on every level, one cell moves 49% of the time, two 33%, three 16%, four 2.6%, and nothing bigger ever happens — so the bar is at two and one cell is left as the ordinary settling droop. The shake moves the background layer only, never the window the HUD is on, and the map outside the play field is blanked at boot so scrolling into it shows nothing.
+- Cells destroyed by a collapse score double — the chain bonus. The sim reports the frame's bonus in `sim.chain_points` (an event field like `hit_mat`), and the front end slides the window up one row for `CHAIN_FRAMES` frames so a "CHAIN +nn" line appears under the HUD while a fall is doing the work. The window has no other user, so the flash borrows its blank row; every restore is gated on the window still being the HUD.
 - `proj_ballistic_frame()` is the same step the real flight uses, so the aim preview arc will match the shot exactly.
 
 ## Tuning

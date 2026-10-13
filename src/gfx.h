@@ -59,7 +59,10 @@
 #define TILE_ICE_BROKEN 54
 #define TILE_TARGET_BROKEN 55
 #define TILE_PUFF 56
-#define GFX_TILE_COUNT 57
+#define TILE_BALL_B 57
+#define TILE_BALL_C 58
+#define TILE_BALL_D 59
+#define GFX_TILE_COUNT 60
 
 extern const unsigned char gfx_tiles[GFX_TILE_COUNT * 16];
 

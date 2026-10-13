@@ -367,6 +367,80 @@ static void test_split_makes_three(void)
     CHECK(s.state == S_AIM && s.pstate == P_SPENT);
 }
 
+/* ---------- PT_PIERCE ---------- */
+
+static int hp_sum(const Sim *s)
+{
+    int i, t = 0;
+    for (i = 0; i < GRID_CELLS; i++) t += s->hp[i];
+    return t;
+}
+
+/* The drill spends the one ability like every type: pused set, once per shot,
+ * and no velocity is touched (unlike boost, which multiplies it). */
+static void test_pierce_trigger_rules(void)
+{
+    Sim s;
+    int16_t vx, vy;
+    sim_load_ascii(&s, wall_level, 7, 3);
+    s.ptype = PT_PIERCE;
+    CHECK(sim_fire(&s, 0, 3) == 1);
+    vx = s.p[0].vx;
+    vy = s.p[0].vy;
+    CHECK(sim_trigger(&s) == 1);
+    CHECK(s.pused == 1);
+    CHECK(s.p[0].vx == vx && s.p[0].vy == vy);  /* trigger moves no velocity */
+    CHECK(sim_trigger(&s) == 0);                /* once per shot */
+}
+
+/* Without the trigger the pierce ball behaves exactly like the standard shot. */
+static void test_pierce_untriggered_stops(void)
+{
+    Sim plain, pierce;
+    sim_load_ascii(&plain, wall_level, 7, 3);
+    sim_load_ascii(&pierce, wall_level, 7, 3);
+    CHECK(sim_fire(&plain, 0, 3) == 1);
+    run_idle(&plain, 5000);
+    pierce.ptype = PT_PIERCE;
+    CHECK(sim_fire(&pierce, 0, 3) == 1);
+    run_idle(&pierce, 5000);                    /* no trigger: same stop at the wall */
+    CHECK(count_cells(&pierce, M_STONE) == count_cells(&plain, M_STONE));
+    CHECK(hp_sum(&pierce) == hp_sum(&plain));
+    CHECK(pierce.pused == 0);
+}
+
+/* With the ability spent, the ball grinds the wall: strictly more damage than
+ * the same unboosted shot, and at high power the drill destroys a stone the
+ * plain shot only dents. Triggered on the launch frame, like the boost test. */
+static void test_pierce_drills_through(void)
+{
+    Sim plain, drill;
+    sim_load_ascii(&plain, wall_level, 7, 3);
+    sim_load_ascii(&drill, wall_level, 7, 3);
+    CHECK(sim_fire(&plain, 0, 7) == 1);
+    run_idle(&plain, 5000);
+    drill.ptype = PT_PIERCE;
+    CHECK(sim_fire(&drill, 0, 7) == 1);
+    CHECK(sim_trigger(&drill) == 1);
+    run_idle(&drill, 5000);
+    CHECK(count_cells(&drill, M_STONE) < count_cells(&plain, M_STONE));
+    CHECK(hp_sum(&drill) < hp_sum(&plain));
+}
+
+/* The drill never tunnels through the ground: an arced shot lands and stops,
+ * even with the ability spent. */
+static void test_pierce_ground_holds(void)
+{
+    Sim drill;
+    sim_load_ascii(&drill, wall_level, 7, 3);
+    drill.ptype = PT_PIERCE;
+    CHECK(sim_fire(&drill, 12, 3) == 1);
+    CHECK(sim_trigger(&drill) == 1);
+    run_idle(&drill, 5000);
+    CHECK(drill.p[0].y < SCREEN_H);
+    CHECK(count_cells(&drill, M_STONE) == 7);   /* nothing else was there to hit */
+}
+
 /* ---------- collapse ---------- */
 
 static void test_empty_level_is_stable(void)
@@ -406,7 +480,27 @@ static void test_long_fall_destroys_cells(void)
     CHECK(count_cells(&s, M_WOOD) == 0);
     CHECK(count_cells(&s, M_STONE) == 0);
     CHECK(s.targets_left == 0);
-    CHECK(s.score == 10 + 20 + 100);
+    /* Collapse deaths pay out double: the chain bonus. */
+    CHECK(s.score == 2 * (10 + 20 + 100));
+}
+
+/* The chain event itself: one fall, one landing, one death - the doubling
+ * lands in chain_points exactly once and clears on the next tick. */
+static void test_chain_bonus_event(void)
+{
+    Sim s;
+    sim_init(&s, 1);
+    sim_set_cell(&s, 3, 2, M_WOOD);     /* dies on its single landing */
+    settle_grid(&s);
+    CHECK(s.score == 2 * 10);           /* base payout plus the chain bonus */
+    sim_tick(&s);
+    CHECK(s.chain_points == 0);         /* cleared by the tick */
+    /* A step that destroys nothing must not raise the event again. */
+    sim_init(&s, 1);
+    sim_set_cell(&s, 5, 15, M_WOOD);    /* propped, never falls */
+    CHECK(settle_grid(&s) == 0);
+    sim_tick(&s);
+    CHECK(s.chain_points == 0);
 }
 
 static void test_bridge_holds(void)
@@ -635,10 +729,12 @@ static int one_shot_wins(const char *const *rows, uint8_t h, uint8_t shots, uint
 }
 
 /* Play the level on the level's own shot budget with one projectile type,
- * always taking the shot that leaves the fewest targets standing (ties to the
- * higher score). Returns the shots used, or -1 if the budget ran out with a
- * target still up. Cheap proxy for "is this level beatable with this type",
- * which is all the difficulty ordering and the type gates need. */
+ * always taking the first shot that leaves the fewest targets standing
+ * (target-count tie-break only: score is deliberately not a criterion, so a
+ * scoring-rule change cannot drift what these solvability tests see).
+ * Returns the shots used, or -1 if the budget ran out with a target still
+ * up. Cheap proxy for "is this level beatable with this type", which is all
+ * the difficulty ordering and the type gates need. */
 static int greedy_play(const char *const *rows, uint8_t h, uint8_t shots, uint8_t type)
 {
     Sim s, best, t;
@@ -652,8 +748,7 @@ static int greedy_play(const char *const *rows, uint8_t h, uint8_t shots, uint8_
                 for (ti = 0; ti < trig_count(type); ti++) {
                     t = s;
                     shoot(&t, type, a, p, TRIGS[ti]);
-                    if (!found || t.targets_left < best.targets_left ||
-                        (t.targets_left == best.targets_left && t.score > best.score)) {
+                    if (!found || t.targets_left < best.targets_left) {
                         best = t;
                         found = 1;
                     }
@@ -791,9 +886,14 @@ int main(void)
     RUN(test_trigger_rules);
     RUN(test_boost_hits_harder);
     RUN(test_split_makes_three);
+    RUN(test_pierce_trigger_rules);
+    RUN(test_pierce_untriggered_stops);
+    RUN(test_pierce_drills_through);
+    RUN(test_pierce_ground_holds);
     RUN(test_empty_level_is_stable);
     RUN(test_stack_falls_together);
     RUN(test_long_fall_destroys_cells);
+    RUN(test_chain_bonus_event);
     RUN(test_bridge_holds);
     RUN(test_bridge_collapses_when_pier_removed);
     RUN(test_fall_damages_what_it_lands_on);

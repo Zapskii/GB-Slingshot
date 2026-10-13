@@ -7,7 +7,8 @@ values. That checks the SDCC build behaves like the gcc one. It also checks the
 front end, which the host tests cannot reach: that the collapse slides sprites,
 that the window HUD tracks the score, that the win and lose splashes replace it
 (a second replay wins with shots to spare, so the 3-star splash and banking are
-covered too), and that the star ratings survive a reset.
+covered too), that a fall that destroys cells flashes the chain bonus under the
+HUD, and that the star ratings survive a reset.
 
 The save check needs two emulator sessions: the first plays and saves, the
 second starts from a cold boot and reads the .sav back.
@@ -58,8 +59,10 @@ WIN_MAP = 0x9C00                        # window map base
 SRAM = 0xA000
 OAM = 0xFE00
 HUD_ROW = 136                           # move_win(7, HUD_ROW) parks the HUD at the bottom
+CHAIN_FRAMES = 30                        # main.c: frames the chain flash lasts
 SAVE_MAGIC = 0x5A
 TILE_BALL, TILE_TARGET = 7, 4
+TILE_BALL_B, TILE_BALL_C, TILE_BALL_D = 57, 58, 59   # gfx.h; one per projectile type
 TILE_FONT_A, TILE_FONT_0, TILE_STAR = 13, 39, 51
 TILE_BROKEN0, TILE_BROKEN3 = 52, 55     # WOOD/STONE/ICE/TARGET_BROKEN
 TILE_PUFF = 56                         # appended after them in tools/mkgfx.py
@@ -89,6 +92,9 @@ def check(cond, msg):
     print(("ok    " if cond else "FAIL  ") + msg)
     if not cond:
         failures.append(msg)
+
+
+BALL_TILES = (TILE_BALL, TILE_BALL_B, TILE_BALL_C, TILE_BALL_D)
 
 
 def fnv(mat, hp):
@@ -159,7 +165,7 @@ class Game:
         n = 0
         for s in range(16):
             y = self.mem[OAM + s * 4]
-            if y >= 16 and self.mem[OAM + s * 4 + 2] == TILE_BALL:
+            if y >= 16 and self.mem[OAM + s * 4 + 2] in BALL_TILES:
                 n += 1
         return n
 
@@ -358,13 +364,18 @@ def main():
     check(g.broken_cells() == 0, "the retry redraws every cell whole")
 
     # Projectile types. B cycles before firing; a split shot fans into three
-    # balls, which only the front end can show.
+    # balls, which only the front end can show. The aim ball wears the armed
+    # type's own tile, so the switch is visible on the slingshot too.
     g.press("b")
     g.tick(2)
     check(g.win_row(0)[9] == TILE_FONT_A + 1, "B switches the HUD to projectile B")
+    check(g.mem[OAM + 2] == TILE_BALL_B,
+          "the aim ball now wears the B tile (got %d)" % g.mem[OAM + 2])
     g.press("b")
     g.tick(2)
     check(g.win_row(0)[9] == TILE_FONT_A + 2, "B again switches to projectile C")
+    check(g.mem[OAM + 2] == TILE_BALL_C,
+          "and the C tile (got %d)" % g.mem[OAM + 2])
     g.press("a")
     g.tick(20)
     check(g.ball_sprites() == 1, "one ball in flight before the split")
@@ -376,9 +387,15 @@ def main():
     g.press("start")                        # abandon the shot, get the level back
     g.tick(6)
     check(g.grid_hash() == start_hash, "START mid-flight abandons the shot")
-    g.press("b")                            # C wraps round to A for the golden run
+    g.press("b")                            # C wraps round to D first: four types now
+    g.tick(2)
+    check(g.win_row(0)[9] == TILE_FONT_A + 3, "B picks the fourth projectile D")
+    check(g.mem[OAM + 2] == TILE_BALL_D,
+          "the aim ball wears the D tile (got %d)" % g.mem[OAM + 2])
+    g.press("b")                            # D wraps round to A for the golden run
     g.tick(2)
     check(g.win_row(0)[9] == TILE_FONT_A, "B wraps back round to projectile A")
+    check(g.mem[OAM + 2] == TILE_BALL, "and the aim ball is the plain ball again")
 
     # Now the recorded game.
     angle, power = START_ANGLE, START_POWER
@@ -497,8 +514,31 @@ def main():
     check(g3.byte(OFF_STATE) == S_AIM, "START after the early win loads level 2")
     g3.stop()
 
+    # ---------- session 4: the chain flash ----------
+    # Level 7's glass box collapses in a way that destroys cells by the fall
+    # itself (verified with the sim: plain shot a0/p1, no ability needed). The
+    # chain bonus scores those twice and slides the window up one row for
+    # CHAIN_FRAMES frames so "CHAIN +nn" appears under the HUD. This session
+    # watches the window position do exactly that and come back.
+    g4 = Game(rom)
+    check(g4.boot(), "the ROM boots for the chain flash")
+    g4.pick_level(6)
+    g4.press("a")                           # A starts the level
+    g4.tick(6)
+    aim_to(g4, 0, 1, START_ANGLE, START_POWER)
+    g4.press("a")                           # fire - the collapse does the rest
+    check(g4.wait_for(lambda: g4.mem[REG_WY] == HUD_ROW - 8, frames=600),
+          "the chain flash slides the HUD up during the collapse (WY=%d)"
+          % g4.mem[REG_WY])
+    check("CHAIN" in g4.win_text(1),
+          "the flash says CHAIN (row 1 reads %r)" % g4.win_text(1))
+    check(g4.wait_for(lambda: g4.mem[REG_WY] == HUD_ROW, frames=CHAIN_FRAMES * 2),
+          "and the HUD returns when the flash ends (WY=%d)" % g4.mem[REG_WY])
+    g4.snap("chain")
+    g4.stop()
+
     if sheet_path:
-        images = g.images + g2.images + g3.images
+        images = g.images + g2.images + g3.images + g4.images
         w, h = images[0][1].size
         scale, pad = 2, 8
         sheet = Image.new("RGB", (len(images) * (w * scale + pad) - pad, h * scale), (255, 0, 255))
