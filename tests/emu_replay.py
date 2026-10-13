@@ -62,6 +62,9 @@ HUD_ROW = 136                           # move_win(7, HUD_ROW) parks the HUD at 
 CHAIN_FRAMES = 30                        # main.c: frames the chain flash lasts
 SAVE_MAGIC = 0x5A
 TILE_BALL, TILE_TARGET = 7, 4
+TILE_GROUND_TOP = 6
+TILE_TITLE_0 = 60                       # gfx.h: TITLE_* runs 60..77, row-major,
+                                        # drawn 9 wide from bkg column 6, row 2
 TILE_BALL_B, TILE_BALL_C, TILE_BALL_D = 57, 58, 59   # gfx.h; one per projectile type
 TILE_FONT_A, TILE_FONT_0, TILE_STAR = 13, 39, 51
 TILE_BROKEN0, TILE_BROKEN3 = 52, 55     # WOOD/STONE/ICE/TARGET_BROKEN
@@ -141,9 +144,13 @@ class Game:
     def win_row(self, r):
         return [self.mem[WIN_MAP + r * 32 + c] for c in range(20)]
 
-    def win_text(self, r):
+    def bkg_row(self, r):
+        return [self.mem[BKG_MAP + r * 32 + c] for c in range(20)]
+
+    @staticmethod
+    def _decode(tiles):
         out = []
-        for t in self.win_row(r):
+        for t in tiles:
             if TILE_FONT_A <= t <= TILE_FONT_A + 25:
                 out.append(chr(ord("A") + t - TILE_FONT_A))
             elif TILE_FONT_0 <= t <= TILE_FONT_0 + 9:
@@ -151,6 +158,12 @@ class Game:
             else:
                 out.append(" " if t == 0 else "?")
         return "".join(out).rstrip()
+
+    def win_text(self, r):
+        return self._decode(self.win_row(r))
+
+    def bkg_text(self, r):
+        return self._decode(self.bkg_row(r))
 
     def sliding_cells(self):
         """How many collapse-animation sprites are on screen right now."""
@@ -222,7 +235,12 @@ class Game:
         return False
 
     def boot(self):
-        ok = self.wait_for(lambda: self.win_text(3).strip() == "SLINGSHOT")
+        """From power-on to the level select, as a player gets there: the
+        title first (its ground line is the last thing it drew), then a START
+        press to open the select screen."""
+        ok = self.wait_for(lambda: self.bkg_row(16)[10] == TILE_GROUND_TOP)
+        self.press("start")
+        ok = self.wait_for(lambda: self.win_text(3).strip() == "SLINGSHOT") and ok
         self.pb.tick(6)
         return ok
 
@@ -291,6 +309,25 @@ def main():
 
     # ---------- session 1: play, then save ----------
     g = Game(rom)
+    # The graphical boot title: the doubled logo block, the game's own kit
+    # (stars, slingshot arc, ground line) and the prompt. Wait for the LAST
+    # element draw_n (the loop that drew the logo does not guarantee the rest
+    # of the block is visible that same frame), then check the lot; boot()
+    # then waits for the button it names; boot() presses START to open the
+    # select screen.
+    check(g.wait_for(lambda: g.bkg_row(16)[10] == TILE_GROUND_TOP, 400),
+          "the boot title drew its ground line (tile %d)" % g.bkg_row(16)[10])
+    check(g.bkg_row(2)[6] == TILE_TITLE_0 and g.bkg_row(3)[14] == TILE_TITLE_0 + 17,
+          "the doubled logo fills its block (top-left %d, bottom-right %d)"
+          % (g.bkg_row(2)[6], g.bkg_row(3)[14]))
+    check(all(g.bkg_row(5)[c] == 51 for c in (9, 11, 13)),
+          "three stars sit under the word (got %s)" % g.bkg_row(5)[8:15])
+    check("PRESS START" in g.bkg_text(14),
+          "the title prompts with the same font (got %r)" % g.bkg_text(14))
+    g.tick(250)
+    check(not ((g.mem[0xFF40] >> 5) & 1),
+          "the title does not advance on its own (window still hidden)")
+    g.snap("title")
     check(g.boot(), "boots into the level select screen")
     check(g.mem[REG_WY] == 0, "level select covers the whole screen (WY=%d)" % g.mem[REG_WY])
     # NR51 powers on at 0xF0, so this cannot pass without sfx_init running.

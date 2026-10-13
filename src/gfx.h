@@ -62,7 +62,25 @@
 #define TILE_BALL_B 57
 #define TILE_BALL_C 58
 #define TILE_BALL_D 59
-#define GFX_TILE_COUNT 60
+#define TILE_TITLE_0 60
+#define TILE_TITLE_1 61
+#define TILE_TITLE_2 62
+#define TILE_TITLE_3 63
+#define TILE_TITLE_4 64
+#define TILE_TITLE_5 65
+#define TILE_TITLE_6 66
+#define TILE_TITLE_7 67
+#define TILE_TITLE_8 68
+#define TILE_TITLE_9 69
+#define TILE_TITLE_10 70
+#define TILE_TITLE_11 71
+#define TILE_TITLE_12 72
+#define TILE_TITLE_13 73
+#define TILE_TITLE_14 74
+#define TILE_TITLE_15 75
+#define TILE_TITLE_16 76
+#define TILE_TITLE_17 77
+#define GFX_TILE_COUNT 78
 
 extern const unsigned char gfx_tiles[GFX_TILE_COUNT * 16];
 

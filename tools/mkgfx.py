@@ -151,6 +151,35 @@ TILES += [
 ]
 
 
+# The boot title: "SLINGSHOT" from the same 3x5 font, doubled 2x (6x10 pixels
+# per letter, 8px pitch), sliced row-major into tiles named TITLE_0 up. main.c
+# places them as a 9-wide x 2-tall block, so its defines must agree with this
+# width and the slice order. Doubled from FONT rather than authored, so a
+# font change moves the title with it.
+def big_title_tiles(word="SLINGSHOT"):
+    pitch = 8
+    canvas = [[0] * (len(word) * pitch) for _ in range(16)]
+    for i, c in enumerate(word):
+        rows = FONT[c].split()
+        ox = i * pitch
+        for gy in range(5):
+            for gx in range(3):
+                if rows[gy][gx] == "#":
+                    for dy in (0, 1):
+                        for dx in (0, 1):
+                            canvas[4 + gy * 2 + dy][ox + 1 + gx * 2 + dx] = 3
+    out = []
+    for ty in range(2):
+        for tx in range(len(word)):
+            out.append(("TITLE_%d" % (ty * len(word) + tx),
+                        ["".join(str(v) for v in row[tx * 8:tx * 8 + 8])
+                         for row in canvas[ty * 8:(ty + 1) * 8]]))
+    return out
+
+
+TILES += big_title_tiles()
+
+
 def encode(rows):
     out = []
     for row in rows:

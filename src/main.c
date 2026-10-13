@@ -60,6 +60,13 @@
 #define WIN_W 20
 #define HUD_ROW 136             /* window Y that leaves one row of HUD visible */
 
+/* The boot title: the 9x2 block the doubled logo occupies. mkgfx.py slices
+ * the "SLINGSHOT" canvas to match: TITLE_0 is the block's top-left tile, and
+ * the rest follow row-major. The title waits for a button, like the prompt
+ * says. */
+#define TITLE_COLS 9
+#define TITLE_ROWS 2
+
 #define DIRS (J_UP | J_DOWN | J_LEFT | J_RIGHT)
 #define REPEAT_DELAY 14
 #define REPEAT_MASK 3           /* repeat every 4th frame once held */
@@ -110,6 +117,7 @@ static uint16_t chain_shown;        /* points the flash is displaying */
 static uint8_t level;               /* the level being played */
 static uint8_t cursor;              /* the level the select screen is pointing at */
 static uint8_t menu;                /* 1 while the select screen is up */
+static uint8_t title;               /* 1 while the boot title is up */
 static uint8_t stars[NUM_LEVELS];   /* best rating per level, mirrored in save RAM */
 
 enum { W_HUD = 0, W_SPLASH, W_SELECT };
@@ -574,6 +582,40 @@ static void show_select(void)
     win_mode = W_SELECT;
 }
 
+/* The boot title. All background layer, so the window can slide out from
+ * under it (HIDE_WIN) and the select screen can simply cover it up. The word
+ * is the doubled font, mkgfx.py's TITLE_* tiles; everything else is the
+ * game's own kit - the slingshot, an arc of dots, stars, a ground line - so
+ * it ages without new art. Advance is the main loop's job. */
+static void bkg_text(uint8_t x, uint8_t y, const char *s)
+{
+    while (*s) set_bkg_tile_xy(x++, y, char_tile(*s++));
+}
+
+static void show_title(void)
+{
+    const uint8_t arc_x[] = { 5, 7, 9, 11, 13 };
+    const int8_t arc_y[] = { 10, 9, 8, 7, 6 };
+    uint8_t x, t;
+
+    for (t = 0; t < TITLE_COLS * TITLE_ROWS; t++)
+        set_bkg_tile_xy((uint8_t)(6 + t % TITLE_COLS), (uint8_t)(2 + t / TITLE_COLS),
+                        (uint8_t)(TILE_TITLE_0 + t));
+    set_bkg_tile_xy(9, 5, TILE_STAR);
+    set_bkg_tile_xy(11, 5, TILE_STAR);
+    set_bkg_tile_xy(13, 5, TILE_STAR);
+    draw_sling();
+    for (t = 0; t < NUM_DOTS; t++)
+        set_bkg_tile_xy(arc_x[t], (uint8_t)arc_y[t], TILE_DOT);
+    set_sprite_tile(SPR_BALL, TILE_BALL);
+    place_sprite(SPR_BALL, LAUNCH_X, LAUNCH_Y);
+    for (x = 0; x < GRID_W; x++) {
+        set_bkg_tile_xy(x, 16, TILE_GROUND_TOP);
+        set_bkg_tile_xy(x, 17, TILE_GROUND);
+    }
+    bkg_text(5, 14, "PRESS START");
+}
+
 /* ---------- game flow ---------- */
 
 static void start_level(uint8_t n)
@@ -700,12 +742,13 @@ void main(void)
     /* Start the cursor on the first level without stars: resume where you left off. */
     cursor = 0;
     while (cursor + 1 < NUM_LEVELS && stars[cursor]) cursor++;
-    menu = 1;
-    show_select();
+    menu = 1;                   /* the select screen is where the title leads */
+    title = 1;
+    show_title();
 
     SHOW_BKG;
     SHOW_SPRITES;
-    SHOW_WIN;
+    HIDE_WIN;                   /* the title is background-only */
     DISPLAY_ON;
 
     while (1) {
@@ -729,6 +772,18 @@ void main(void)
          * there would freeze on screen until the next shot. Every path through
          * the loop reaches this line, so no puff can outlive PUFF_LIFE. */
         age_puffs();
+
+        /* The boot title waits for the button the prompt names: A or START,
+         * like the splash and the select screen. It never times out. */
+        if (title) {
+            if (((keys & J_START) && !(prev_keys & J_START)) ||
+                ((keys & J_A) && !(prev_keys & J_A))) {
+                title = 0;
+                SHOW_WIN;
+                show_select();
+            }
+            continue;
+        }
 
         if (menu) {
             if ((keys & J_LEFT) && !(prev_keys & J_LEFT) && cursor > 0) {

@@ -121,9 +121,9 @@ Each phase ends with something you can run in mgba.
 - Open: no level yet declares `# needs D` — design some pierce puzzle levels (22+).
 
 ### Phase 6: Polish (open-ended)
-- Title screen, particle puffs, screen shake on big collapses, sound effects.
+- Done: particle puffs, screen shake on big collapses, sound effects, the graphical boot title (the doubled font logo plus the game's own tiles — sling, arc, stars, ground line — so it needs no new art beyond the logo slices), and the difficulty pass for levels 1 to 20 (`check_levels --par`).
+- Levels 21 to 30. Include puzzle levels for the pierce drill (`# needs D`).
 - Super Game Boy border (reuse `sgb_border.c/h`).
-- Levels 21 to 30 and a difficulty pass.
 - Optional: hUGEDriver music, GBC palette.
 
 ## Testing strategy
