@@ -7,7 +7,7 @@ Working title: **GB-Slingshot** (see "Theme and IP" below before settling on art
 A single-screen-per-level slingshot/destruction game for the original DMG Game Boy. Fling a limited number of projectiles at structures built from wood, stone and ice, and knock out every target. No game engine, same approach as GB-Protector and GB-Draughts.
 
 **v1 scope:** 4 projectile types (standard, boost, split, pierce), 3 materials plus targets, 30 levels, title screen, level select, battery save for stars, SFX.
-**Stretch:** music, SGB border, 100+ levels, GBC colour palette.
+**Stretch:** in-game music (hUGEDriver; the title already has its own small loop, `tools/render_titles.py` renders it for tuning), SGB border, 100+ levels, GBC colour palette.
 
 ## Theme and IP
 
@@ -76,7 +76,7 @@ Cap the number of simultaneously moving cells (about 8). If more would move, sna
 
 **Banking.** Start unbanked. Move level data to MBC1 banks once it exceeds about 16 KB. Use `#pragma bank` and `SET_BANK`/`SWITCH_ROM`, with a single level-loading function in bank 0 that copies the level into the RAM grid.
 
-**Audio.** SFX by writing directly to the APU registers via small helper functions (launch, hit wood, hit stone, hit ice, target pop, win, lose). Music via hUGEDriver as a stretch goal.
+**Audio.** SFX and titles by writing directly to the APU registers via small helper functions (launch, hit wood, hit stone, hit ice, target pop, win, lose; the boots-title tune is the jingle sequencer slowed and looped). Music via hUGEDriver as a stretch goal.
 
 ## Build phases
 

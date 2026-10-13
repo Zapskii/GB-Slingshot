@@ -503,6 +503,33 @@ static void test_chain_bonus_event(void)
     CHECK(s.chain_points == 0);
 }
 
+/* The puff's ground position: the first cell a fall landing destroyed
+ * reports its own (x, y), cleared by the tick like the other events, and a
+ * mere dented landing reports nothing. */
+static void test_chain_points_where(void)
+{
+    Sim s;
+    sim_init(&s, 1);
+    sim_set_cell(&s, 3, 2, M_WOOD);     /* dies at its landing on the ground */
+    settle_grid(&s);
+    CHECK(s.chain_points == 10);
+    CHECK(s.chain_x == 3 && s.chain_y == 15);
+    sim_tick(&s);
+    CHECK(s.chain_x == 0xFF && s.chain_y == 0xFF);
+
+    /* a fall that only dents: wood dropping two rows onto wood (raw 1 ->
+     * damage 1 against hp 4) is damage without destruction, so no chain and
+     * no dust position */
+    sim_init(&s, 1);
+    sim_set_cell(&s, 4, 15, M_WOOD);
+    sim_set_cell(&s, 4, 13, M_WOOD);    /* falls two rows onto the support */
+    settle_grid(&s);
+    sim_tick(&s);
+    CHECK(AT(&s, 4, 15) == M_WOOD && AT(&s, 4, 14) == M_WOOD);  /* fell together */
+    CHECK(s.score == 0);                /* a dent pays nothing, so no bonus either */
+    CHECK(s.chain_x == 0xFF && s.chain_y == 0xFF);
+}
+
 static void test_bridge_holds(void)
 {
     Sim s;
@@ -894,6 +921,7 @@ int main(void)
     RUN(test_stack_falls_together);
     RUN(test_long_fall_destroys_cells);
     RUN(test_chain_bonus_event);
+    RUN(test_chain_points_where);
     RUN(test_bridge_holds);
     RUN(test_bridge_collapses_when_pier_removed);
     RUN(test_fall_damages_what_it_lands_on);

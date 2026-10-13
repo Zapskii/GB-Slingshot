@@ -113,6 +113,11 @@ typedef struct {
      * damage_cell() touched, 0 for nothing. Sound is the front end's business,
      * so this is data, not a hardware call. Cleared at the top of sim_tick. */
     uint8_t hit_mat;
+    /* The first cell a fall landing destroyed this frame: the puff's ground
+     * position (column, row). Valid while chain_points is nonzero; cleared
+     * by sim_tick like hit_mat, never by sim_collapse_step — so a host test
+     * stepping the collapse directly must tick before asserting these. */
+    uint8_t chain_x, chain_y;
 } Sim;
 
 /* The ROM builds with SDCC, while tests/sim_offsets_probe.c regenerates the
@@ -209,6 +214,8 @@ static void sim_init(Sim *s, uint8_t shots)
     s->flight_frames = 0;
     s->nmoves = 0;
     s->hit_mat = M_EMPTY;
+    s->chain_x = 0xFF;
+    s->chain_y = 0xFF;
 }
 
 static void sim_set_cell(Sim *s, uint8_t x, uint8_t y, uint8_t m)
@@ -343,6 +350,12 @@ static uint8_t sim_collapse_step(Sim *s)
                     damage_cell(s, idx, (uint8_t)(f - 1));
                     s->chain_points = (uint16_t)(s->chain_points + (s->score - before));
                     s->score = (uint16_t)(s->score + (s->score - before));
+                    /* The first destroyed cell of the frame points at the
+                     * dust: one puff burst is all the sprite budget allows. */
+                    if (s->score - before && s->chain_x == 0xFF) {
+                        s->chain_x = x;
+                        s->chain_y = r;
+                    }
                 }
             }
         }
@@ -472,6 +485,8 @@ static void sim_tick(Sim *s)
 {
     s->hit_mat = M_EMPTY;       /* one frame of events: the front end reads them now */
     s->chain_points = 0;
+    s->chain_x = 0xFF;
+    s->chain_y = 0xFF;
     if (s->state == S_FLIGHT) {
         sim_flight_frame(s);
         if (s->pstate == P_SPENT) {

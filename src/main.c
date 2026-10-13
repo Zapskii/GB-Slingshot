@@ -163,6 +163,7 @@ static void save_stars(void)
 #define SFX_IMPACT_ENV 0xF4     /* NR42: volume 15, fading, period 4 */
 #define SFX_COOLDOWN   6        /* frames of quiet after a crunch */
 #define SFX_STEP       8        /* frames per jingle note */
+#define TITLE_STEP     12       /* frames per note of the title tune */
 
 /* Win is C E G C rising, lose is G E C falling, as (NR23 low, NR24 high) pairs.
  * Flat and stride 2 rather than an array of pairs: SDCC is happier without a
@@ -170,9 +171,34 @@ static void save_stars(void)
 static const uint8_t win_notes[]  = { 0x05, 0x07, 0x39, 0x07, 0x59, 0x07, 0x83, 0x07 };
 static const uint8_t lose_notes[] = { 0xB2, 0x06, 0x73, 0x06, 0x0C, 0x06 };
 
+/* The title tune: one C-major loop, the win arpeggio drawn out into a tune -
+ * phrase and answer, a scale run home, then resolve. (0, 0) is a rest: the
+ * note before it is still ringing, so a pair of rests is a hold. The table
+ * is rendered to a WAV by tools/render_titles.py for tuning by ear. */
+static const uint8_t title_notes[] = {
+    /* C5  E5  G5  E5  */
+    0x06, 0x07,  0x39, 0x07,  0x59, 0x07,  0x39, 0x07,
+    /* A5  G5  E5   -  */
+    0x6B, 0x07,  0x59, 0x07,  0x39, 0x07,  0x00, 0x00,
+    /* F5  E5  D5  E5  */
+    0x44, 0x07,  0x39, 0x07,  0x21, 0x07,  0x39, 0x07,
+    /* C5   -   G4   -  */
+    0x06, 0x07,  0x00, 0x00,  0xB2, 0x06,  0x00, 0x00,
+    /* A4  B4  C5  D5  */
+    0xD6, 0x06,  0xF7, 0x06,  0x06, 0x07,  0x21, 0x07,
+    /* E5   -   -    -  */
+    0x39, 0x07,  0x00, 0x00,  0x00, 0x00,  0x00, 0x00,
+    /* G5  E5  D5  B4  */
+    0x59, 0x07,  0x39, 0x07,  0x21, 0x07,  0xF7, 0x06,
+    /* C5   -   -    -  */
+    0x06, 0x07,  0x00, 0x00,  0x00, 0x00,  0x00, 0x00
+};
+
 static uint8_t sfx_cool;
 static const uint8_t *jingle;
 static uint8_t jingle_i, jingle_n, jingle_wait;
+static uint8_t jingle_step;        /* frames per note (jingles tick faster than the tune) */
+static uint8_t jingle_loop;        /* 1 while the tune should keep coming round */
 
 static void sfx_init(void)
 {
@@ -220,19 +246,43 @@ static void sfx_jingle(const uint8_t *notes, uint8_t n)
     jingle_n = n;
     jingle_i = 0;
     jingle_wait = 0;
+    jingle_step = SFX_STEP;
+    jingle_loop = 0;
+}
+
+/* The title's tune: the same sequencer, slower, looping until told to stop. */
+static void sfx_title(void)
+{
+    jingle = title_notes;
+    jingle_n = sizeof(title_notes) / 2;
+    jingle_i = 0;
+    jingle_wait = 0;
+    jingle_step = TITLE_STEP;
+    jingle_loop = 1;
+}
+
+/* Stop whatever ch2 is playing and silence it; the next blip re-arms the
+ * envelope. Called when the title hands over to the level select. */
+static void sfx_title_off(void)
+{
+    jingle_loop = 0;
+    jingle_i = jingle_n = 0;
+    NR22_REG = 0x00;
 }
 
 /* Once per frame, from the top of the main loop, so the jingle keeps playing on
- * the level select and the splash screens too. */
+ * the level select and the splash screens too. A (0, 0) pair is a rest: the
+ * last note is left ringing, so double rests read as held notes. */
 static void sfx_frame(void)
 {
     if (sfx_cool) sfx_cool--;
     if (jingle_i >= jingle_n) return;
     if (jingle_wait) { jingle_wait--; return; }
-    NR23_REG = jingle[jingle_i * 2];
-    NR24_REG = (uint8_t)(jingle[jingle_i * 2 + 1] | 0x80);
+    if (jingle[jingle_i * 2 + 1])
+        sfx_note(jingle[jingle_i * 2], jingle[jingle_i * 2 + 1]);
     jingle_i++;
-    jingle_wait = SFX_STEP;
+    if (jingle_loop && jingle_i >= jingle_n) jingle_i = 0;
+    jingle_wait = jingle_step;
 }
 
 /* Voice what the sim just reported. Only called from the flight/settle branch:
@@ -420,28 +470,24 @@ static void hide_puffs(void)
     }
 }
 
-/* A burst where the shot hit. The only way the front end learns of an impact
- * is sim.hit_mat, which sim_tick clears each frame.
+/* A burst of dust. The callers decide where it comes from and when it is
+ * warranted: the ball's own hit is known only through sim.hit_mat (which
+ * sim_tick clears each frame) and only while the shot was airborne last
+ * frame - a shot that dents a cell stops on the spot, so by then the sim is
+ * settling and the ball is frozen; and a collapse landing damages cells in
+ * that same settling state, so asking hit_mat there would puff every crush
+ * out of the wrong place. That is why the two reads are the callers'.
  *
- * flying is the state before this frame's tick, and it has to be passed in: a
- * shot that only dents a cell stops on the spot, so by the time this runs the
- * sim is already settling and asking it would drop the puff for every hit that
- * did not break through - which is most of them. A collapse landing damages
- * cells in that same settling state, and those must not puff: the ball is
- * frozen where it stopped and the dust would come out in the wrong place.
- *
- * ponytail: no puff for a cell a collapse landing shatters, for that same
- * reason. Telling a shattered cell from a moved one needs a destroy log in Sim
- * beside moves[]. */
-static void spawn_puffs(uint8_t flying)
+ * The one burst that *is* collapse's own: a fall that destroys a cell reports
+ * the site in sim.chain_x/chain_y beside chain_points, and puffs there. */
+static void spawn_puffs(int16_t px, int16_t py)
 {
     uint8_t i, n;
-    if (!flying || sim.hit_mat == M_EMPTY) return;
     for (i = 0; i < NUM_PUFF_SPECKS; i++) {
         for (n = 0; n < MAX_PUFFS && puffs[n].frames; n++) { }
         if (n == MAX_PUFFS) break;      /* out of sprites: the rest of the burst is dropped */
-        puffs[n].x = (int16_t)(sim.p[0].x + puff_vx[i] * PUFF_LEAD);
-        puffs[n].y = (int16_t)(sim.p[0].y + puff_vy[i] * PUFF_LEAD);
+        puffs[n].x = (int16_t)(px + puff_vx[i] * PUFF_LEAD);
+        puffs[n].y = (int16_t)(py + puff_vy[i] * PUFF_LEAD);
         puffs[n].vx = puff_vx[i];
         puffs[n].vy = puff_vy[i];
         puffs[n].frames = PUFF_LIFE;
@@ -745,6 +791,7 @@ void main(void)
     menu = 1;                   /* the select screen is where the title leads */
     title = 1;
     show_title();
+    sfx_title();
 
     SHOW_BKG;
     SHOW_SPRITES;
@@ -779,6 +826,7 @@ void main(void)
             if (((keys & J_START) && !(prev_keys & J_START)) ||
                 ((keys & J_A) && !(prev_keys & J_A))) {
                 title = 0;
+                sfx_title_off();
                 SHOW_WIN;
                 show_select();
             }
@@ -852,7 +900,11 @@ void main(void)
             }
             age_falls();        /* after the step, so releases land on a fresh grid */
             spawn_falls();
-            spawn_puffs(was_flying);
+            /* the two puff warrants: the airborne ball's hit, and the fall
+             * landing's own destruction, each at its own ground */
+            if (was_flying && sim.hit_mat != M_EMPTY) spawn_puffs(sim.p[0].x, sim.p[0].y);
+            if (sim.chain_points) spawn_puffs(
+                (int16_t)(sim.chain_x * 8 + 4), (int16_t)(sim.chain_y * 8 + 4));
             redraw_changes();
             draw_proj();
         } else {

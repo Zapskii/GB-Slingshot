@@ -51,6 +51,8 @@ S_LOST = _SIM["s_lost"]
 REG_WY = 0xFF4A
 REG_SCY, REG_SCX = 0xFF42, 0xFF43        # screen shake moves the background only
 REG_NR10, REG_NR51 = 0xFF10, 0xFF25     # ch1 sweep and sound panning: both readable
+                                        # (ch2's NR22/NR23 read power-on garbage; the
+                                        # tune is checked through the audio buffer)
 LAUNCH_SWEEP = 0x15                     # main.c SFX_SWEEP, written by sfx_init
 REG_NR42 = 0xFF21                       # ch4 envelope: write-only on hardware, but
 IMPACT_ENV = 0xF4                       # PyBoy latches it, and it reads 0 until a hit
@@ -327,8 +329,33 @@ def main():
     g.tick(250)
     check(not ((g.mem[0xFF40] >> 5) & 1),
           "the title does not advance on its own (window still hidden)")
+    # The tune is checked through the emulator's own audio buffer, not by
+    # reading the APU registers: NR23/NR24 are write-only on hardware and
+    # PyBoy reads of them are latched garbage. The buffer is a one-frame ring,
+    # so a span is sampled per tick, and spans must tolerate the tune's own
+    # 3-to-4-note rests.
+    audible = False
+    for _ in range(40):
+        g.tick(1)
+        if any(abs(s) > 2 for s in g.pb.sound.raw_buffer):
+            audible = True
+    check(audible, "the title tune is audible in the boot audio")
+    for _ in range(384):                    # one whole loop of the 32-note tune
+        g.tick(1)
+    still = False
+    for _ in range(40):
+        g.tick(1)
+        if any(abs(s) > 2 for s in g.pb.sound.raw_buffer):
+            still = True
+    check(still, "and the tune keeps playing past its loop length")
     g.snap("title")
     check(g.boot(), "boots into the level select screen")
+    silent = True
+    for _ in range(120):
+        g.tick(1)
+        if any(abs(s) > 2 for s in g.pb.sound.raw_buffer):
+            silent = False
+    check(silent, "the tune is silent once the title hands over")
     check(g.mem[REG_WY] == 0, "level select covers the whole screen (WY=%d)" % g.mem[REG_WY])
     # NR51 powers on at 0xF0, so this cannot pass without sfx_init running.
     # NR50 is deliberately not checked: it powers on at 0x77, the value we write.
@@ -564,6 +591,22 @@ def main():
     g4.tick(6)
     aim_to(g4, 0, 1, START_ANGLE, START_POWER)
     g4.press("a")                           # fire - the collapse does the rest
+    # Collapse destruction now puffs at the destroyed cell (the sim's
+    # chain_x/chain_y event). A settle-born puff is only possible that way:
+    # ball-hit bursts happen while the shot is airborne and are dead within
+    # 12 + slack frames of it.
+    check(g4.wait_for(lambda: g4.byte(OFF_STATE) == S_SETTLE, frames=600),
+          "the shot reaches the settling point (state %d)" % g4.byte(OFF_STATE))
+    g4.tick(30)
+    check(g4.wait_for(lambda: g4.puff_sprites() > 0, frames=600),
+          "a fall that destroys cells kicks up dust of its own")
+    far = False
+    bx, by = g4.mem[OAM + 1], g4.mem[OAM]           # SPR_BALL, parked at the launch
+    for s in range(SPR_PUFF0, SPR_PUFF0 + NUM_PUFF):
+        if g4.mem[OAM + s * 4] >= 16 and g4.mem[OAM + s * 4 + 2] == TILE_PUFF:
+            if abs(g4.mem[OAM + s * 4 + 1] - bx) + abs(g4.mem[OAM + s * 4] - by) > 20:
+                far = True
+    check(far, "and the dust is at the fall site, not the parked ball")
     check(g4.wait_for(lambda: g4.mem[REG_WY] == HUD_ROW - 8, frames=600),
           "the chain flash slides the HUD up during the collapse (WY=%d)"
           % g4.mem[REG_WY])
