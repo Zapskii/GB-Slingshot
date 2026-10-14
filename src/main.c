@@ -877,12 +877,17 @@ void main(void)
         set_sgb_border(border_data_tiles, sizeof(border_data_tiles),
                        border_data_map, sizeof(border_data_map),
                        border_data_palettes, sizeof(border_data_palettes));
-        /* Putting it right again has to happen with the display off, which is
-         * how the boot did it before any of this existed. The transfer leaves
-         * VRAM full of border tiles and the map holding the order they were
-         * shown in, and a tile bank plus a 32x32 blank is far more than a
-         * vertical blank: with the LCD running, VRAM is shut to the CPU
-         * through mode 3 on most scanlines and the writes are simply lost. */
+        /* Putting it right again. The transfer leaves VRAM full of border
+         * tiles and the map holding the order they were shown in, and a tile
+         * bank plus a 32x32 blank is far more than a vertical blank: it cannot
+         * all go back inside one.
+         *
+         * The display goes off across it because that is the cheaper way round,
+         * not because it has to be. With the LCD running, GBDK's VRAM writers
+         * poll STAT and wait out modes 2 and 3 before every byte they write,
+         * which is more than half the frame; stopped, they write straight away.
+         * Leaving the display on would be just as correct -- it is the writers
+         * that keep these writes safe, not this. */
         DISPLAY_OFF;
         set_bkg_data(0, GFX_TILE_COUNT, gfx_tiles);
         set_sprite_data(0, GFX_TILE_COUNT, gfx_tiles);
