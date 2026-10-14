@@ -4,7 +4,8 @@
 main.c is the single source of truth: the note tables (NR23/NR24 period
 pairs) and the frames-per-note constants are parsed straight out of it, so
 tuning by ear is just editing the C, regenerating, and listening. A (0, 0)
-pair is a rest.
+pair is a rest. The title's ch1 bass is parsed the same way and mixed into
+the title section.
 
 The synth is intentionally simple: a 50%-duty square at the note's frequency,
 with a linear decay over a fraction of a second to suggest the APU's
@@ -21,7 +22,8 @@ import sys
 import wave
 
 RATE = 44100
-DECAY_S = 0.22          # seconds a note takes to fade (envelope suggestion)
+MELODY_DECAY_S = 0.22   # seconds a note takes to fade (envelope suggestion)
+BASS_DECAY_S = 1.4      # the bass envelope (0x87) is far longer-lived
 
 
 def parse_main(path):
@@ -38,12 +40,13 @@ def parse_main(path):
 
     return {
         "title_notes": (table("title_notes"), define("TITLE_STEP")),
+        "bass_notes":  (table("bass_notes"), define("BASS_STEP")),
         "win_notes":   (table("win_notes"), define("SFX_STEP")),
         "lose_notes":  (table("lose_notes"), define("SFX_STEP")),
     }
 
 
-def synth(freq, seconds):
+def synth(freq, seconds, decay_s=MELODY_DECAY_S):
     """A 50% duty square, decayed linearly: the APU suggestion. 0 Hz = rest."""
     n = int(RATE * seconds)
     out = []
@@ -54,8 +57,25 @@ def synth(freq, seconds):
         else:
             sq = 0.0
         out.append(sq * vol)
-        vol = max(0.0, 0.5 - i / RATE * (0.5 / DECAY_S))
+        vol = max(0.0, 0.5 - i / RATE * (0.5 / decay_s))
     return out
+
+
+def render_tune(notes, step, decay_s):
+    out = []
+    for i in range(0, len(notes), 2):
+        lo, hi = notes[i], notes[i + 1]
+        period = (hi & 7) * 256 + lo if hi else 0
+        freq = 131072.0 / (2048 - period) if period and hi else 0.0
+        out.extend(synth(freq, step / 60.0, decay_s))   # 60 fps
+    return out
+
+
+def mix(a, b):
+    n = max(len(a), len(b))
+    a = a + [0.0] * (n - len(a))
+    b = b + [0.0] * (n - len(b))
+    return [x + y for x, y in zip(a, b)]
 
 
 def main():
@@ -65,11 +85,12 @@ def main():
     for name in ("title_notes", "win_notes", "lose_notes"):
         notes, step = src[name]
         pcm.extend(synth(0, 0.1))                       # a breath between tunes
-        for i in range(0, len(notes), 2):
-            lo, hi = notes[i], notes[i + 1]
-            period = (hi & 7) * 256 + lo if hi else 0
-            freq = 131072.0 / (2048 - period) if period and hi else 0.0
-            pcm.extend(synth(freq, step / 60.0))        # 60 fps
+        voice = render_tune(notes, step, MELODY_DECAY_S)
+        if name == "title_notes":
+            bnotes, bstep = src["bass_notes"]
+            voice = mix(voice, render_tune(bnotes, bstep, BASS_DECAY_S))
+            print("bass_notes: %d notes at %d frames/note" % (len(bnotes) // 2, bstep))
+        pcm.extend(voice)
         print("%s: %d notes at %d frames/note" % (name, len(notes) // 2, step))
     with wave.open(out, "wb") as w:
         w.setnchannels(1)

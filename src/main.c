@@ -164,6 +164,8 @@ static void save_stars(void)
 #define SFX_COOLDOWN   6        /* frames of quiet after a crunch */
 #define SFX_STEP       8        /* frames per jingle note */
 #define TITLE_STEP     12       /* frames per note of the title tune */
+#define BASS_STEP      24       /* frames per bass note: half the tune's rate */
+#define BASS_ENV       0x87     /* NR12: volume 15, the longest fade 7 allows */
 
 /* Win is C E G C rising, lose is G E C falling, as (NR23 low, NR24 high) pairs.
  * Flat and stride 2 rather than an array of pairs: SDCC is happier without a
@@ -194,11 +196,30 @@ static const uint8_t title_notes[] = {
     0x06, 0x07,  0x00, 0x00,  0x00, 0x00,  0x00, 0x00
 };
 
+/* The bass under the title tune, on ch1: the tune is all C major, so a
+ * retriggered C3/G2 root-fifth walks underneath it - not long holds, whose, whose
+ * envelope would die inside one 24-frame slot. 16 by 24 frames is the tune's
+ * 32 by 12 exactly, so the two voices stay in lockstep as they come round.
+ * Same (NR13 low, NR14 high) pairs and rest convention as the tune above.
+ * NR10 is the launch's sweep, so it carries no sweep while ch1 is tonal. */
+static const uint8_t bass_notes[] = {
+    /* C3      C3       G2       G2  */
+    0x16, 0x04,  0x16, 0x04,  0xC6, 0x02,  0xC6, 0x02,
+    /* C3      C3       G2       G2  */
+    0x16, 0x04,  0x16, 0x04,  0xC6, 0x02,  0xC6, 0x02,
+    /* C3      C3       G2       G2  */
+    0x16, 0x04,  0x16, 0x04,  0xC6, 0x02,  0xC6, 0x02,
+    /* C3      C3       G2       G2  */
+    0x16, 0x04,  0x16, 0x04,  0xC6, 0x02,  0xC6, 0x02
+};
+
 static uint8_t sfx_cool;
 static const uint8_t *jingle;
 static uint8_t jingle_i, jingle_n, jingle_wait;
 static uint8_t jingle_step;        /* frames per note (jingles tick faster than the tune) */
 static uint8_t jingle_loop;        /* 1 while the tune should keep coming round */
+static uint8_t bass_i, bass_wait;
+#define BASS_N (sizeof(bass_notes) / 2)
 
 static void sfx_init(void)
 {
@@ -215,6 +236,15 @@ static void sfx_launch(void)
     NR12_REG = 0xF3;
     NR13_REG = 0x00;
     NR14_REG = 0x86;
+}
+
+/* ch1's other life: the bass note under the title tune. */
+static void bass_note(uint8_t lo, uint8_t hi)
+{
+    NR11_REG = 0x80;                /* 50% duty */
+    NR12_REG = BASS_ENV;
+    NR13_REG = lo;
+    NR14_REG = (uint8_t)(hi | 0x80);        /* trigger */
 }
 
 /* ch2: one note. The ability blip and the target pop are the same thing at
@@ -250,7 +280,8 @@ static void sfx_jingle(const uint8_t *notes, uint8_t n)
     jingle_loop = 0;
 }
 
-/* The title's tune: the same sequencer, slower, looping until told to stop. */
+/* The title's tune: the same sequencer, slower, looping until told to stop.
+ * The bass stream below it starts in step, and NR10 steps aside for ch1. */
 static void sfx_title(void)
 {
     jingle = title_notes;
@@ -259,22 +290,42 @@ static void sfx_title(void)
     jingle_wait = 0;
     jingle_step = TITLE_STEP;
     jingle_loop = 1;
+    NR10_REG = 0x00;                /* no sweep while ch1 is a bass guitar */
+    bass_i = 0;
+    bass_wait = 0;
 }
 
 /* Stop whatever ch2 is playing and silence it; the next blip re-arms the
- * envelope. Called when the title hands over to the level select. */
+ * envelope. Called when the title hands over to the level select. The bass
+ * stops with it - ch1 goes quiet and its sweep goes back to the launch. */
 static void sfx_title_off(void)
 {
     jingle_loop = 0;
     jingle_i = jingle_n = 0;
     NR22_REG = 0x00;
+    bass_i = BASS_N;
+    NR12_REG = 0x00;                /* nothing left ringing on ch1 */
+    NR10_REG = SFX_SWEEP;
 }
 
 /* Once per frame, from the top of the main loop, so the jingle keeps playing on
  * the level select and the splash screens too. A (0, 0) pair is a rest: the
- * last note is left ringing, so double rests read as held notes. */
+ * last note is left ringing, so double rests read as held notes. The bass
+ * stream runs the same shape, one call behind the tune. */
+static void sfx_bass_frame(void)
+{
+    if (bass_i >= BASS_N) return;
+    if (bass_wait) { bass_wait--; return; }
+    if (bass_notes[bass_i * 2 + 1])
+        bass_note(bass_notes[bass_i * 2], bass_notes[bass_i * 2 + 1]);
+    bass_i++;
+    if (bass_i >= BASS_N) bass_i = 0;   /* loop-locked to the tune above */
+    bass_wait = BASS_STEP;
+}
+
 static void sfx_frame(void)
 {
+    sfx_bass_frame();               /* before the early returns below */
     if (sfx_cool) sfx_cool--;
     if (jingle_i >= jingle_n) return;
     if (jingle_wait) { jingle_wait--; return; }
