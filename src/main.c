@@ -11,8 +11,10 @@
  */
 #include <gb/gb.h>
 #include <stdint.h>
+#include "border_data.h"
 #include "gfx.h"
 #include "levels.h"
+#include "sgb_border.h"
 #include "sim.h"
 
 #define SPR_BALL 0
@@ -847,13 +849,53 @@ void main(void)
     while (cursor + 1 < NUM_LEVELS && stars[cursor]) cursor++;
     menu = 1;                   /* the select screen is where the title leads */
     title = 1;
-    show_title();
-    sfx_title();
 
     SHOW_BKG;
     SHOW_SPRITES;
     HIDE_WIN;                   /* the title is background-only */
     DISPLAY_ON;
+
+    /* The Super Game Boy border, once, at boot. It has to come after
+     * DISPLAY_ON: the SGB reads the CHR_TRN/PCT_TRN payloads off the rendered
+     * screen, so the transfer is a picture the Game Boy draws and the SGB
+     * copies back. That leaves VRAM holding border tiles rather than ours, so
+     * the tile bank is reloaded below -- inside the gate, because a DMG never
+     * touches it and should not pay for the reload.
+     *
+     * Four frames first, outside the gate: a PAL SNES answers sgb_check()
+     * unreliably until the machine has settled, and the delay has to be there
+     * for the check itself. It costs a DMG no more than the title appearing a
+     * fifteenth of a second later.
+     *
+     * On a DMG sgb_check() is false and none of this happens: the boot is the
+     * same as it ever was. */
+    {
+        uint8_t i;
+        for (i = 4; i != 0; i--) vsync();
+    }
+    if (sgb_check()) {
+        set_sgb_border(border_data_tiles, sizeof(border_data_tiles),
+                       border_data_map, sizeof(border_data_map),
+                       border_data_palettes, sizeof(border_data_palettes));
+        /* Putting it right again has to happen with the display off, which is
+         * how the boot did it before any of this existed. The transfer leaves
+         * VRAM full of border tiles and the map holding the order they were
+         * shown in, and a tile bank plus a 32x32 blank is far more than a
+         * vertical blank: with the LCD running, VRAM is shut to the CPU
+         * through mode 3 on most scanlines and the writes are simply lost. */
+        DISPLAY_OFF;
+        set_bkg_data(0, GFX_TILE_COUNT, gfx_tiles);
+        set_sprite_data(0, GFX_TILE_COUNT, gfx_tiles);
+        fill_bkg_rect(0, 0, 32, 32, TILE_BLANK);
+        DISPLAY_ON;
+    }
+
+    /* The title goes up inside the blanking just after a vsync, like every
+     * other drawing the game does, rather than wherever the border transfer
+     * happened to leave the frame. */
+    vsync();
+    show_title();
+    sfx_title();
 
     while (1) {
         vsync();

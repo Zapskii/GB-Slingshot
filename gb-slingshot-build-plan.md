@@ -7,7 +7,7 @@ Working title: **GB-Slingshot** (see "Theme and IP" below before settling on art
 A single-screen-per-level slingshot/destruction game for the original DMG Game Boy. Fling a limited number of projectiles at structures built from wood, stone and ice, and knock out every target. No game engine, same approach as GB-Protector and GB-Draughts.
 
 **v1 scope:** 4 projectile types (standard, boost, split, pierce), 3 materials plus targets, 30 levels, title screen, level select, battery save for stars, SFX.
-**Stretch:** in-game music (hUGEDriver; the title already has its own small loop, `tools/render_titles.py` renders it for tuning), SGB border, 100+ levels, GBC colour palette.
+**Stretch:** in-game music (hUGEDriver; the title already has its own small loop, `tools/render_titles.py` renders it for tuning), 100+ levels, GBC colour palette. The SGB border started here and is now built.
 
 ## Theme and IP
 
@@ -52,7 +52,7 @@ GB-Slingshot/
   Dockerfile      GBDK-2020 toolchain
 ```
 
-Reuse from existing projects: the Docker GBDK toolchain, the `mkgfx.py` pattern, the `sim.h` plus `make test` approach, mgba for testing, and the `sgb_border.c/h` driver when you reach the border stage.
+Reuse from existing projects: the Docker GBDK toolchain, the `mkgfx.py` pattern, the `sim.h` plus `make test` approach, mgba for testing, and the `sgb_border.c/h` driver when you reach the border stage — that pair turned out to live in GB-Protector on GitHub rather than on this machine, and it is the GBDK example with two transfer bugs fixed.
 
 ## Key technical decisions
 
@@ -121,9 +121,12 @@ Each phase ends with something you can run in mgba.
 - Open: no level yet declares `# needs D` — design some pierce puzzle levels (22+).
 
 ### Phase 6: Polish (open-ended)
-- Done: particle puffs, screen shake on big collapses, sound effects, the graphical boot title (the doubled font logo plus the game's own tiles — sling, arc, stars, ground line — so it needs no new art beyond the logo slices), and the difficulty pass for levels 1 to 20 (`check_levels --par`).
+- Done: particle puffs, screen shake on big collapses, sound effects, the graphical boot title (the doubled font logo plus the game's own tiles — sling, arc, stars, ground line — so it needs no new art beyond the logo slices), the Super Game Boy border, and the difficulty pass for levels 1 to 20 (`check_levels --par`).
 - Levels 21 to 30. Include puzzle levels for the pierce drill (`# needs D`).
-- Super Game Boy border (reuse `sgb_border.c/h`).
+- Super Game Boy border. Done: `sgb_border.c/h` reused from GB-Protector (it is
+  the GBDK example with two transfer bugs fixed), with new art of its own
+  (`tools/mkborder.py` -> `png2asset` -> `src/border_data.c`) rather than a
+  copy-and-tune of Protector's, and `make sgb-test` checking the round trip.
 - Optional: hUGEDriver music, GBC palette.
 
 ## Testing strategy
