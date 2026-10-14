@@ -139,6 +139,19 @@ def main():
     check(0 < len(want_pal) <= 128 and len(want_pal) % 32 == 0,
           "the art's palette blob is %d bytes: whole 16-colour palettes, within "
           "the SGB's four" % len(want_pal))
+    # The SGB draws colour 0 of every border palette as the backdrop, so it is
+    # where the Game Boy screen shows through and nothing may be drawn into it.
+    # This is the one fault the byte-for-byte comparisons below cannot see: with
+    # a used colour in slot 0 the border still transfers perfectly and only the
+    # picture is wrong -- and only on screen, as a band of the art gone. It is
+    # what happened when png2asset packed the palettes itself: it reserves slot 0
+    # only for palettes whose tiles carry a transparent pixel, and this border's
+    # second palette never does. mkborder.py reserves the slot and the rule's
+    # -keep_palette_order makes png2asset keep its packing, so a reserved slot 0
+    # in every palette is the shape of that arrangement still holding.
+    for i in range(len(want_pal) // 32):
+        check(want_pal[i * 32:i * 32 + 2] == b"\x00\x00",
+              "palette %d keeps slot 0 reserved for the backdrop" % i)
 
     pb, (tiles, bmap, pals) = boot(rom, BOOT_FRAMES)
     landed = bool(any(tiles) and any(bmap))

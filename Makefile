@@ -52,8 +52,13 @@ src/levels.h: tools/mklevels.py $(wildcard levels/*.txt)
 art/border_sgb.png: tools/mkborder.py tools/mkgfx.py
 	$(PYTHON) tools/mkborder.py art/border_sgb.png
 
+# -keep_palette_order makes png2asset take the palettes from the PNG, which is
+# indexed, rather than packing them itself. It has to: png2asset reserves slot 0
+# of an SGB palette (the backdrop colour, so nothing drawn there is visible)
+# only for palettes whose tiles contain a transparent pixel, and this border's
+# second palette never does. mkborder.py reserves the slot for every palette.
 src/border_data.c src/border_data.h: art/border_sgb.png
-	$(P2A) art/border_sgb.png -map -bpp 4 -max_palettes 4 \
+	$(P2A) art/border_sgb.png -map -bpp 4 -max_palettes 4 -keep_palette_order \
 	       -pack_mode sgb -use_map_attributes -c src/border_data.c
 
 # Cart type 0x03 = MBC1 + RAM + battery, so the star ratings survive a reset.

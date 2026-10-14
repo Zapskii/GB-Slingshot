@@ -20,6 +20,21 @@ the join instead.
 png2asset turns this into src/border_data.c with -pack_mode sgb. Twenty-three
 colours, which fits the SGB's four 16-colour palettes with room to spare.
 
+The PNG is written indexed, and png2asset is run with -keep_palette_order, so
+that this script -- not png2asset -- decides which colour sits in which slot.
+It has to, because the SGB draws colour 0 of every border palette as the
+backdrop rather than as a colour: any picture drawn there is simply lost. Slot
+0 of each palette is therefore reserved here and never drawn into, and the
+palettes are packed 15 colours to the palette rather than 16.
+
+png2asset will not do that by itself. It reserves slot 0 only for palettes
+whose tiles happen to contain a transparent pixel, and every tile of this
+border is either wholly inside the Game Boy rectangle or wholly outside it --
+the rectangle is tile-aligned -- so the transparent tiles all land in the first
+palette and the second never sees one. Its brightest colour, the pale sand of
+the ground, then sat in slot 0 and the whole band rendered as backdrop. GBDK
+4.4.0 has no fix for this; upstream added one only in 2025.
+
 Written with zlib and struct rather than Pillow, to match mkgfx.py and
 mklevels.py, which need nothing but the standard library.
 
@@ -33,6 +48,12 @@ import zlib
 
 W, H = 256, 224
 GB_X, GB_Y, GB_W, GB_H = 48, 40, 160, 144
+
+TILE = 8                      # the SGB border is laid out in 8x8 tiles
+PAL_COLORS = 16               # entries in one SGB border palette
+PAL_CAP = PAL_COLORS - 1      # ...of which slot 0 is reserved, so 15 to draw with
+PAL_LIMIT = 3                 # the SGB's border is drawn with SNES palettes 4, 5 and 6 only
+RESERVED = (0, 0, 0)          # what sits in slot 0; never drawn, so the value is arbitrary
 
 CLEAR = (0, 0, 0, 0)
 
@@ -254,25 +275,110 @@ def main():
     wordmark(cv, WORD_X + SHADOW_OFF, WORD_Y + SHADOW_OFF, SHADOW)
     wordmark(cv, WORD_X, WORD_Y, CREAM)
 
-    write_png(out, cv.px)
-    print("%s  %dx%d" % (out, W, H))
+    colors, slots = pack_palettes(cv.px)
+    write_png(out, index_pixels(cv.px, colors, slots), colors)
+    print("%s  %dx%d  %d palettes (%s colours)"
+          % (out, W, H, len(colors),
+             " + ".join(str(len(c) - 1) for c in colors)))
 
 
-def write_png(path, px):
-    """A minimal RGBA PNG writer: zlib for the stream, struct for the chunks."""
+def luminance(c):
+    """Perceived brightness, the order png2asset sorts a palette's colours in.
+
+    Matching it is not required -- slot order is ours to choose now -- but it
+    keeps the generated border_data.c recognisable next to earlier revisions.
+    """
+    return c[0] * 299 + c[1] * 587 + c[2] * 114
+
+
+def pack_palettes(px):
+    """Choose the border's palettes and say which tile uses which.
+
+    Tiles go first-fit in raster order, each taking the first palette with room
+    for its colours -- the same greedy png2asset applies, so the layout stays
+    stable across art tweaks. A tile whose colours fit nowhere starts a new
+    palette.
+
+    Fully transparent pixels are the Game Boy screen being punched out; they
+    occupy the reserved slot 0 and so are not counted against a palette.
+    """
+    palettes = []
+    slots = [[0] * (W // TILE) for _ in range(H // TILE)]
+    for ty in range(H // TILE):
+        for tx in range(W // TILE):
+            drawn = {px[y][x][:3]
+                     for y in range(ty * TILE, (ty + 1) * TILE)
+                     for x in range(tx * TILE, (tx + 1) * TILE)
+                     if px[y][x][3] != 0}
+            for i, pal in enumerate(palettes):
+                if len(pal | drawn) <= PAL_CAP:
+                    pal |= drawn
+                    break
+            else:
+                palettes.append(set(drawn))
+                i = len(palettes) - 1
+            slots[ty][tx] = i
+    if len(palettes) > PAL_LIMIT:
+        sys.exit("mkborder: the art needs %d palettes, but the SGB's border can "
+                 "use only %d" % (len(palettes), PAL_LIMIT))
+    # Slot 0 first (reserved), then the colours, brightest to darkest.
+    return [[RESERVED] + sorted(pal, key=luminance, reverse=True)
+            for pal in palettes], slots
+
+
+def index_pixels(px, colors, slots):
+    """Index every pixel: 16 * palette + slot within it.
+
+    png2asset's -keep_palette_order reads the palette number straight out of
+    the index, so this is what decides the attribute byte of each map entry.
+    """
+    rows = [[0] * W for _ in range(H)]
+    for ty in range(H // TILE):
+        for tx in range(W // TILE):
+            # A colour drawn equal to RESERVED sits later in the palette and so
+            # wins the lookup, which is what an opaque pixel wants; alpha 0 does
+            # not come through here at all.
+            slot_of = {c: i for i, c in enumerate(colors[slots[ty][tx]])}
+            base = PAL_COLORS * slots[ty][tx]
+            for y in range(ty * TILE, (ty + 1) * TILE):
+                for x in range(tx * TILE, (tx + 1) * TILE):
+                    rows[y][x] = base + (0 if px[y][x][3] == 0
+                                         else slot_of[px[y][x][:3]])
+    return rows
+
+
+def write_png(path, rows, colors):
+    """A minimal indexed PNG writer: zlib for the stream, struct for the chunks.
+
+    Colour type 3 with 8 bits a pixel, so a byte an index. The palette is laid
+    out 16 entries to a palette in the order pack_palettes() chose, with the
+    reserved slot 0 of each marked fully transparent -- that has to stay
+    transparent, or the Game Boy screen has no hole to show through.
+    """
     dirname = os.path.dirname(path)
     if dirname:
         os.makedirs(dirname, exist_ok=True)
-    raw = b"".join(b"\x00" + b"".join(bytes(p) for p in row) for row in px)
+    raw = b"".join(b"\x00" + bytes(row) for row in rows)
 
     def chunk(tag, data):
         body = tag + data
         return (struct.pack(">I", len(data)) + body
                 + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF))
 
+    plte, trns = bytearray(), bytearray()
+    for pal in colors:
+        for i, c in enumerate(pal):
+            plte += bytes(c)
+            trns.append(0 if i == 0 else 255)
+        for _ in range(PAL_COLORS - len(pal)):   # pad the palette out to 16
+            plte += bytes(RESERVED)
+            trns.append(0)
+
     with open(path, "wb") as f:
         f.write(b"\x89PNG\r\n\x1a\n")
-        f.write(chunk(b"IHDR", struct.pack(">IIBBBBB", W, H, 8, 6, 0, 0, 0)))
+        f.write(chunk(b"IHDR", struct.pack(">IIBBBBB", W, H, 8, 3, 0, 0, 0)))
+        f.write(chunk(b"PLTE", bytes(plte)))
+        f.write(chunk(b"tRNS", bytes(trns)))
         f.write(chunk(b"IDAT", zlib.compress(raw, 9)))
         f.write(chunk(b"IEND", b""))
 
