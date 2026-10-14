@@ -673,6 +673,12 @@ static void show_select(void)
     }
     win_text(7, 7, "LEVEL");
     win_num(9, 9, (uint16_t)(cursor + 1), 2);
+    /* The budget is invisible until the HUD draws otherwise - this is the one
+     * place the player can see what a level asks of it. One tile, not win_num:
+     * the budgets are single digits, and the extra call's codegen was enough to
+     * make the optimizer reorder the menu's button-edge tests (inputs lost). */
+    win_text(7, 11, "SHOTS");
+    set_win_tile_xy(14, 11, char_tile((char)('0' + level_shots[cursor])));
     for (s = 0; s < n; s++)
         set_win_tile_xy((uint8_t)(10 - n + s * 2), 12, TILE_STAR);
     win_text(5, 15, "PRESS A");

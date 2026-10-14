@@ -54,6 +54,7 @@ REG_NR10, REG_NR51 = 0xFF10, 0xFF25     # ch1 sweep and sound panning: both read
                                         # (ch2's NR22/NR23 read power-on garbage; the
                                         # tune is checked through the audio buffer)
 LAUNCH_SWEEP = 0x15                     # main.c SFX_SWEEP, written by sfx_init
+BUDGET_GOLDEN = 3                       # levels.h level_shots[GOLDEN_LEVEL]
 REG_NR42 = 0xFF21                       # ch4 envelope: write-only on hardware, but
 IMPACT_ENV = 0xF4                       # PyBoy latches it, and it reads 0 until a hit
 BKG_MAP = 0x9800                        # background map base, where the cells land
@@ -368,6 +369,8 @@ def main():
     g.pick_level(GOLDEN_LEVEL)
     check(g.win_text(9).strip() == str(GOLDEN_LEVEL + 1),
           "level select shows the cursor (got %r)" % g.win_text(9))
+    check(g.win_text(11).split() == ["SHOTS", str(BUDGET_GOLDEN)],
+          "level select shows the shot budget (got %r)" % g.win_text(11))
     g.press("a")
     g.tick(6)
     check(g.mem[REG_WY] == HUD_ROW, "A starts the level and brings the HUD back")
