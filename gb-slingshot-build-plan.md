@@ -127,6 +127,10 @@ Each phase ends with something you can run in mgba.
   the GBDK example with two transfer bugs fixed), with new art of its own
   (`tools/mkborder.py` -> `png2asset` -> `src/border_data.c`) rather than a
   copy-and-tune of Protector's, and `make sgb-test` checking the round trip.
+  Checked on screen in mGBA, which turned out to render SGB borders without a
+  BIOS. The PNG is indexed and png2asset runs with `-keep_palette_order`, so the
+  palette packs itself and keeps colour 0 — the backdrop, so nothing drawn there
+  is visible — empty; see the README's border section.
 - Optional: hUGEDriver music, GBC palette.
 
 ## Testing strategy

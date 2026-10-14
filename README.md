@@ -76,7 +76,7 @@ tests/sgb_border_test.py  boots the ROM with SGB processing on and compares what
 
 ## Super Game Boy border
 
-On a Super Game Boy the boot installs a border around the game: a 256x224 picture, transparent over the 160x144 Game Boy screen, so it frames the title, the level select and play alike. The art is `art/border_sgb.png`, drawn by `tools/mkborder.py`: a launch rig at dusk. Ten bands of sunset sky with a few stars and four clouds, a wooden frame around the screen, a stack of crates on the right with a flag over it, a rolling hill and a fence along the bottom, and SLINGSHOT across the top. `png2asset` turns it into `src/border_data.c`: 144 tiles, a 32x28 map, 23 colours in two palettes. Each palette gives up its slot 0, so they hold 15 colours each rather than 16 — see below.
+On a Super Game Boy the boot installs a border around the game: a 256x224 picture, transparent over the 160x144 Game Boy screen, so it frames the title, the level select and play alike. The art is `art/border_sgb.png`, drawn by `tools/mkborder.py`: a launch rig at dusk. Ten bands of sunset sky with a few stars and four clouds, a wooden frame around the screen, a stack of crates on the right with a flag over it, a rolling hill and a fence along the bottom, and SLINGSHOT across the top. `png2asset` turns it into `src/border_data.c`: 144 tiles, a 32x28 map, 23 colours in two palettes. Each palette gives up its slot 0, so they have room for 15 colours rather than 16; this border uses 15 of them in one and 13 in the other, the ground sharing several with the sky. See below.
 
 Two things about the art are deliberate:
 
@@ -87,7 +87,7 @@ The one thing the SGB imposes on the art: **colour 0 of every border palette is 
 
 The wordmark is drawn from the border's own bold 3x5, not `mkgfx.py`'s `FONT`: that one is cut for the HUD at 1x and the title at 2x, and at 3x its thin diagonals read weakly.
 
-`set_sgb_border()` (from GBDK's `sgb_border` example, with the two bugs GB-Protector fixed) has to run after `DISPLAY_ON`, because the transfer is a round trip: the Game Boy copies the border into VRAM, draws it on the LCD in a known order, and the SGB reads the picture back a byte at a time. That leaves VRAM holding border tiles, so the tile bank is reloaded and the title redrawn afterwards — inside the gate, so a DMG never pays for it. It also needs four frames of settling first for a PAL SNES.
+`set_sgb_border()` (from GBDK's `sgb_border` example, with the two bugs GB-Protector fixed) has to run after `DISPLAY_ON`, because the transfer is a round trip: the Game Boy copies the border into VRAM, draws it on the LCD in a known order, and the SGB reads the picture back a byte at a time. That leaves VRAM holding border tiles, so the tile bank is reloaded and the title redrawn afterwards — inside the gate, so a DMG never pays for it. The reload runs with the display off, which is the cheaper way round rather than a requirement: GBDK's VRAM writers wait out modes 2 and 3 before every byte they write, so nothing is dropped either way, but with the LCD stopped they have no reason to wait, and that is more than half the frame. It also needs four frames of settling first for a PAL SNES.
 
 Everything is behind `sgb_check()`, so on a DMG the boot is exactly what it was. The ROM announces itself SGB-enhanced with `-Wm-ys`; without that flag an SGB treats the cart as an ordinary Game Boy and shows no border at all.
 
