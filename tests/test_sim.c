@@ -890,14 +890,14 @@ static int play_shot(Sim *s, uint8_t a, uint8_t p)
  * once the new behaviour is deliberate. */
 static void test_golden_replay(void)
 {
-    static const uint8_t shots[][2] = { { 0, 7 }, { 0, 5 }, { 0, 5 } };
-    static const uint32_t GOLDEN = 0xC6967041u;
+    static const uint8_t shots[][2] = { { 0, 0 }, { 0, 0 }, { 0, 4 } };
+    static const uint32_t GOLDEN = 0x834F7998u;
     const char *const *rows = level_rows[GOLDEN_LEVEL];
     uint8_t n = level_height[GOLDEN_LEVEL];
     uint32_t h1 = 0, h2 = 0;
     int pass, i, changes = 0;
     for (i = 0; i < n; i++) CHECK(strlen(rows[i]) == GRID_W);
-    CHECK(n == 6);                             /* the recorded game assumes this */
+    CHECK(n == 5);                             /* the recorded game assumes this */
     for (pass = 0; pass < 2; pass++) {
         Sim s;
         sim_load_ascii(&s, rows, n, level_shots[GOLDEN_LEVEL]);

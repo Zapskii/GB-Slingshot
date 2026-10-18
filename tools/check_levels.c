@@ -238,6 +238,7 @@ static int solve_level(unsigned level, long states_budget, long sims_budget,
                        int verbose, unsigned *par_out)
 {
     const unsigned shots = level_shots[level];
+    long level_sims = 0;        /* the budget is per level, not per run */
     Sim init = { 0 };
     Layer layers[MAX_LAYERS] = { 0 };
     SeenSet seen;
@@ -263,6 +264,7 @@ static int solve_level(unsigned level, long states_budget, long sims_budget,
     for (d = 1; d <= shots && !verdict; d++) {
         Layer *from = &layers[d - 1], *to = &layers[d];
         size_t i;
+        int capped = 0;         /* frontier full: stop storing, keep searching */
         to->n = 0;
         for (i = 0; i < from->n && !verdict; i++) {
             unsigned pt, a, p, ti, n_t;
@@ -283,8 +285,8 @@ static int solve_level(unsigned level, long states_budget, long sims_budget,
                 shot[2] = (uint8_t)p;
                 shot[3] = trigger_t >= 0 ? (uint8_t)trigger_t : 255;
                 s2.ptype = (uint8_t)pt;
-                total_sims++;
-                if (total_sims > sims_budget) { verdict = -1; break; }
+                total_sims++; level_sims++;
+                if (level_sims > sims_budget) { verdict = -1; break; }
                 if (!sim_fire(&s2, (uint8_t)a, (uint8_t)p)) continue;
                 play_to_end(&s2, trigger_t);
                 if (s2.state == S_WON) {
@@ -294,7 +296,9 @@ static int solve_level(unsigned level, long states_budget, long sims_budget,
                     break;
                 }
                 if (s2.state != S_AIM) continue;         /* ran out of shots */
-                if (to->n >= (size_t)states_budget) { verdict = -1; break; }
+                /* A full frontier means the layer is not explored completely,
+                 * but the states already in it can still produce a win. */
+                if (to->n >= (size_t)states_budget) { capped = 1; continue; }
                 fingerprint(&s2, &h1, &h2);
                 if (!seen_add(&seen, h1, h2)) continue;  /* state already known */
                 if (d > 1) layer_push(to, &s2, (uint32_t)i, shot);
@@ -302,6 +306,7 @@ static int solve_level(unsigned level, long states_budget, long sims_budget,
             }
         }
         layer_reset(from);
+        if (!verdict && capped) verdict = -1;         /* out of states, no win */
         if (!verdict && to->n == 0) verdict = 0;      /* frontier ran dry */
         if (verbose) printf("        depth %u: %zu states\n", d, to->n);
         if (verdict) break;

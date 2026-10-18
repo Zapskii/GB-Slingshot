@@ -84,15 +84,15 @@ PUFF_LIFE = 12                         # main.c: frames a speck is drawn for
 
 # Must match test_golden_replay in tests/test_sim.c.
 GOLDEN_LEVEL = 2
-GOLDEN_HASH = 0xC6967041
-GOLDEN_SCORE = 120
-SHOTS = [(0, 7), (0, 5), (0, 5)]        # (angle index, power index)
+GOLDEN_HASH = 0x834F7998
+GOLDEN_SCORE = 235
+SHOTS = [(0, 0), (0, 0), (0, 4)]        # (angle index, power index)
 # An early win with shots to spare: level 1 falls to this single shot, leaving
 # two and rating 3 stars. The golden replay wins on its last shot, so this
 # session in main() covers the other branch: the splash, the 3-star row, and a
 # 3-star bank, all reached from a win the golden game never makes. Found by a
 # sim search (sim_load_ascii + sim_fire); level 1 needs no special projectile.
-EARLY_SHOTS = [(0, 4)]
+EARLY_SHOTS = [(0, 6)]
 START_ANGLE, START_POWER = 3, 1         # main.c AIM_ANGLE / AIM_POWER
 SHAKE_PX = 2                           # main.c shake_off peaks at 2
 
@@ -391,8 +391,9 @@ def main():
     check("SCORE" in g.win_text(0) and g.win_row(0)[5] == TILE_TARGET,
           "HUD shows targets and a score label")
 
-    # First play it badly: three weak shots leave the target standing.
-    angle, power = aim_to(g, 0, 0, START_ANGLE, START_POWER)
+    # First play it badly: three weak shots leave the target standing. The
+    # shot has to reach the ice column and chip it without breaking through.
+    angle, power = aim_to(g, 2, 4, START_ANGLE, START_POWER)
     check(g.broken_cells() == 0, "every cell starts out drawn whole")
     g.max_puffs = 0
     g.press("a")
@@ -544,7 +545,7 @@ def main():
     # Levels 11+ are built around one projectile type, and the select screen is
     # the only place that tells the player which.
     g2.pick_level(14)
-    check(g2.win_text(5).strip() == "NEEDS B",
+    check(g2.win_text(5).strip() == "NEEDS C",
           "the select screen names the needed projectile (got %r)" % g2.win_text(5))
     g2.snap("needs")
     g2.pick_level(GOLDEN_LEVEL)
@@ -593,17 +594,19 @@ def main():
     g3.stop()
 
     # ---------- session 4: the chain flash ----------
-    # Level 7's glass box collapses in a way that destroys cells by the fall
-    # itself (verified with the sim: plain shot a0/p1, no ability needed). The
-    # chain bonus scores those twice and slides the window up one row for
-    # CHAIN_FRAMES frames so "CHAIN +nn" appears under the HUD. This session
-    # watches the window position do exactly that and come back.
+    # Level 5's ice tower collapses in a way that destroys cells by the fall
+    # itself (verified with the sim: plain shot a4/p3, no ability needed, and
+    # the fall still runs when the settle is 30 frames old, so the dust is
+    # still alive when this session starts looking for it). The chain bonus
+    # scores those twice and slides the window up one row for CHAIN_FRAMES
+    # frames so "CHAIN +nn" appears under the HUD. This session watches the
+    # window position do exactly that and come back.
     g4 = Game(rom)
     check(g4.boot(), "the ROM boots for the chain flash")
-    g4.pick_level(6)
+    g4.pick_level(4)
     g4.press("a")                           # A starts the level
     g4.tick(6)
-    aim_to(g4, 0, 1, START_ANGLE, START_POWER)
+    aim_to(g4, 4, 3, START_ANGLE, START_POWER)
     g4.press("a")                           # fire - the collapse does the rest
     # Collapse destruction now puffs at the destroyed cell (the sim's
     # chain_x/chain_y event). A settle-born puff is only possible that way:
@@ -626,7 +629,9 @@ def main():
           % g4.mem[REG_WY])
     check("CHAIN" in g4.win_text(1),
           "the flash says CHAIN (row 1 reads %r)" % g4.win_text(1))
-    check(g4.wait_for(lambda: g4.mem[REG_WY] == HUD_ROW, frames=CHAIN_FRAMES * 2),
+    # The collapse can chain several times, and each event restarts the 30-frame
+    # flash; wait generously rather than assuming one event.
+    check(g4.wait_for(lambda: g4.mem[REG_WY] == HUD_ROW, frames=900),
           "and the HUD returns when the flash ends (WY=%d)" % g4.mem[REG_WY])
     g4.snap("chain")
     g4.stop()

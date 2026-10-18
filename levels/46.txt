@@ -1,0 +1,6 @@
+# shots 3
+# needs C
+..........WWWWWWWWWW
+..........W..I..I..W
+..........W.TI.TI.TW
+..........SSSSSSSSSS
