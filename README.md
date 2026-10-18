@@ -1,155 +1,228 @@
 # GB-Slingshot
 
-A slingshot / destruction game for the original Game Boy, written in C with GBDK-2020 and no game engine. Fling a limited number of shots at structures made of wood, stone and ice and knock out every target. Working title: use original characters and names, not an existing franchise's.
+![GB-Slingshot title screen](art/screenshot.png)
 
-See `gb-slingshot-build-plan.md` for the full plan.
+A slingshot physics-puzzle game for the original Game Boy. Pick an angle and a
+power, choose one of four projectiles, and bring down structures of wood, stone
+and ice to destroy every target before your shots run out.
 
-## Status
+Fifty hand-built levels, star ratings and a battery save, four projectile types
+with a mid-flight ability, sound, dust and screen shake, and a Super Game Boy
+border. Written in C with [GBDK-2020](https://github.com/gbdk-2020/gbdk-2020)
+and no game engine. The ROM is a single 32 KB image.
 
-| Phase | State |
+**[How to play](play.md)** · [Build plan](gb-slingshot-build-plan.md)
+
+## Features
+
+- **50 levels** built from plain-text ASCII grids, with shot budgets tuned
+  against a brute-force solver rather than guessed.
+- **Four projectiles** — standard, boost, split and pierce — each with one
+  ability spent on a second A press while the shot is in flight.
+- **A physical world**: cells dent, crack, break, fall and land on each other.
+  A collapse can destroy a target, and cells destroyed by a fall score double.
+- **Star ratings** from the shots you have left, saved in cartridge RAM with a
+  battery, so progress survives a reset.
+- **A DMG game that becomes an SGB game**: on a Super Game Boy the cartridge
+  installs a 256x224 border around the screen.
+- **No engine, no floats, no 32-bit maths**: a header-only simulation shared by
+  the Game Boy front end and the host-side tests.
+
+## Play
+
+You need a built ROM first: see [Building](#building). Then either
+
+```sh
+make run        # open build/slingshot.gb in mGBA
+```
+
+or load `build/slingshot.gb` in any Game Boy emulator or flash cartridge. On a
+Super Game Boy, the border appears automatically.
+
+The full manual — controls, materials, projectiles, scoring and strategy — is
+in **[play.md](play.md)**. The short version:
+
+| Input | Action |
 |---|---|
-| 0. Skeleton, build tooling | Done. ROM builds and runs; demo structure drawn from the sim grid, sprite bouncing |
-| 1. Simulation core (`src/sim.h`) | Done. 1171 host-side checks passing |
-| 2. Rendering and aiming | Done. D-pad aiming, preview arc, firing, cells break on screen. ROM replay matches the host golden hash |
-| 3. Collapse animation, win/lose screens, HUD | Done. Collapsing cells slide as sprites, a window-layer HUD tracks shots/targets/score, win and lose splash screens |
-| 4. Levels and progression | Done. 23 levels as ASCII files, a level select, a star rating from shots left, and a battery save so the stars survive a reset |
-| 5. Projectile variety | Done. Four projectile types, a second A press mid-flight to use the type's ability, levels 11-19 each gated on one type |
-| 6. Polish (open-ended) | Started. Sound effects written straight to the APU: launch, wood/stone/ice impacts pitched by material, a target pop, and win and lose jingles. The title screen has its own looping tune (the jingle sequencer slowed down; `tools/render_titles.py` renders it to a WAV for tuning by ear). A shot kicks up a puff of dust where it lands, and a collapse of two or more cells shakes the screen. The graphical boot title is built, and so is the Super Game Boy border: on an SGB the boot installs a 256x224 border around the game — a launch rig at dusk, framing the screen in wood. In-game music and levels 24-30 are not |
-
-## Commands
-
-```
-make test           host-side tests for src/sim.h (needs only gcc or clang, and python3)
-make                build build/slingshot.gb (uses lcc if on PATH, otherwise Docker)
-make emu-test       replay the golden game through the ROM in a headless emulator (needs "pyboy>=2.8.0" and pillow; PYTHON=... picks the interpreter, default python3)
-make sgb-test       check the Super Game Boy border transfer reaches the SGB intact
-make run            build and open in mgba
-make docker-image   build the GBDK-2020 toolchain image (see Dockerfile)
-```
-
-If GBDK is installed somewhere other than the path baked into `lcc`, set `GBDKDIR` (with a trailing slash) and put its `bin` on `PATH`.
-
-## Controls
-
-The game opens on a graphical title — the doubled logo over the slingshot, an arc rising from it, three stars — which waits for A or START, then shows the level select. The level select is still where saved things are shown: left/right picks a level, its best star rating is displayed, A starts it. D-pad up/down changes the angle (5 to 80 degrees), left/right changes the power, A fires. B cycles the projectile type before you fire — the ball in the slingshot shows the armed type's own tile — and a **second A press while the shot is in flight** spends that type's one ability. START restarts the level, or after a win banks the star and loads the next level; SELECT goes back to the level select. The dotted arc shows the shot's path ignoring the structure. A window-layer bar under the play field shows shots left, targets left, the current projectile type and the score; when the game ends, a splash screen covers the play field until START is pressed.
-
-Stars are kept in cartridge RAM, so they survive a reset, and the level select opens on the first level you have not beaten.
+| D-pad up / down | Angle (5°–80°, in 5° steps) |
+| D-pad left / right | Power (8 steps) |
+| B | Cycle projectile type |
+| A | Fire |
+| A while in flight | Spend the projectile's ability, once per shot |
+| START | Restart the level, or load the next one after a win |
+| SELECT | Back to the level select |
 
 ## Projectiles
 
-| | Ability on the second A press |
-|---|---|
-| **A** standard | none |
-| **B** boost | the shot speeds up 50% on the spot, same direction, which is one speed bucket more damage and more range |
-| **C** split | the shot fans into three, each shard rotated a little off the parent's heading |
-| **D** pierce | the ball becomes a drill: for the rest of the flight it keeps flying through the cells it dents, grinding them down instead of stopping — ground still stops it |
+| | Type | Ability on the second A press |
+|---|---|---|
+| **A** | Standard | None |
+| **B** | Boost | Speeds up 50% on the spot, in the same direction |
+| **C** | Split | Fans into three shards, each rotated slightly |
+| **D** | Pierce | Turns into a drill that keeps flying through the cells it dents; ground still stops it |
 
-The fan is a cheap rotation (`vx ± vy>>3`, `vy ± vx>>3`) rather than a trig table: no table to store, and the shift keeps it inside `int16_t` without ever going to 32-bit. `SPLIT_NUDGE` is the knob.
+The split fan is a cheap rotation (`vx ± vy>>3`, `vy ± vx>>3`) rather than a
+trig table, and all three shards fly on the same step as a normal shot. A shot
+ends when its last projectile is spent.
 
-All three types fly on the same step, so a split shot runs three independent collisions per frame and the shot ends when the last one is spent.
+Eighteen levels declare the type they are built around (`# needs B`, for
+example); the level select shows the requirement.
 
-## Layout
+## Building
 
+Requirements:
+
+- [GBDK-2020](https://github.com/gbdk-2020/gbdk-2020) 4.4.0 (`lcc` on `PATH`),
+  **or** Docker — the Makefile builds inside a container when `lcc` is absent.
+- `python3` for the table, tile and level generators.
+- `gcc` or `clang` for the host tests.
+
+```sh
+make                 # build/slingshot.gb
+make test            # host-side simulation tests (no GBDK needed)
+make check-asm       # scan the SDCC assembly for the cached-accumulator bug
+make check-levels    # brute-force every level's shot budget
+make emu-test        # replay the golden game in PyBoy (needs pyboy + pillow)
+make sgb-test        # verify the SGB border transfer
+make run             # build, then open in mGBA
+make docker-image    # build the GBDK toolchain image used when lcc is absent
 ```
-src/sim.h        game logic: grid, materials, fixed-point flight, damage, collapse, win/lose
-src/main.c       Game Boy front end: pad input, aiming, drawing, level select, save
-src/tables.h     generated by tools/mktables.py (launch velocities)
-src/gfx.c/.h     generated by tools/mkgfx.py (tiles)
-src/levels.h     generated by tools/mklevels.py from levels/*.txt
-src/sgb_border.c/.h  the Super Game Boy border transfer (CHR_TRN/PCT_TRN)
-art/border_sgb.png   generated by tools/mkborder.py (the border art, 256x224)
-src/border_data.c/.h generated from it by png2asset, the way Protector does it
-levels/*.txt     the levels, one ASCII grid each
-tests/test_sim.c host tests, including a golden replay
-tests/emu_replay.py  plays the same golden game on the real ROM and checks the result —
-                    the lose splash, an early win with shots to spare (3-star splash
-                    and banking), and the battery save are all covered in its sessions
-tools/check_levels.c  proves every level is winnable within its shot budget, including
-                    the mid-flight ability (make check-levels; ~1s)
-tests/sim_offsets_probe.c  prints the Sim layout as JSON; make emu-test regenerates
-                    tests/emu_replay.py's field offsets from it every run
-tests/sgb_border_test.py  boots the ROM with SGB processing on and compares what the SGB
-                    received against src/border_data.c (make sgb-test)
+
+If GBDK is installed somewhere other than the path baked into `lcc`, set
+`GBDKDIR` (with a trailing slash) and put its `bin` on `PATH`.
+
+Without a local toolchain:
+
+```sh
+make docker-image                 # once
+make
+make emu-test PYTHON=.venv/bin/python
 ```
 
-`src/tables.h`, `src/gfx.*` and `src/levels.h` are regenerated by `make` when their tools or inputs change; `art/border_sgb.png` and `src/border_data.*` likewise, though that pair needs `png2asset` from the GBDK install rather than plain Python, so it follows `lcc` into the container when `lcc` isn't on `PATH`.
-
-## Super Game Boy border
-
-On a Super Game Boy the boot installs a border around the game: a 256x224 picture, transparent over the 160x144 Game Boy screen, so it frames the title, the level select and play alike. The art is `art/border_sgb.png`, drawn by `tools/mkborder.py`: a launch rig at dusk. Ten bands of sunset sky with a few stars and four clouds, a wooden frame around the screen, a stack of crates on the right with a flag over it, a rolling hill and a fence along the bottom, and SLINGSHOT across the top. `png2asset` turns it into `src/border_data.c`: 144 tiles, a 32x28 map, 23 colours in two palettes. Each palette gives up its slot 0, so they have room for 15 colours rather than 16; this border uses 15 of them in one and 13 in the other, the ground sharing several with the sky. See below.
-
-Two things about the art are deliberate:
-
-- **The slingshot stands outside the frame, and the game draws another one just inside it.** So there are two, side by side and the same shape. That is the reference's arrangement, and it reads as a diorama: the rig out here, the play area inset between it and the crates on the right.
-- **The hill does not try to meet the game's ground line.** The two are drawn by different machines in different palettes and could never match, so the frame is there to own the join rather than the ground pretending to continue. (An earlier starfield border tried the opposite, carrying the ground across the seam.)
-
-The one thing the SGB imposes on the art: **colour 0 of every border palette is the backdrop, not a colour.** Anything drawn into it is simply not shown. Every palette here therefore reserves slot 0 — it holds the transparent colour the Game Boy screen is punched out with, and nothing else — which is why the palettes carry 15 colours and `tools/mkborder.py` packs them itself rather than leaving it to `png2asset`. `png2asset` reserves slot 0 only for palettes whose tiles contain a transparent pixel, and every tile of this border is either wholly inside the Game Boy rectangle or wholly outside it, the rectangle being tile-aligned; so the transparent tiles all land in the first palette, the second never sees one, and its brightest colour — the pale sand of the ground — would sit in slot 0 and disappear into the backdrop. GBDK 4.4.0 has no fix for that, which is why the PNG is indexed and the rule passes `-keep_palette_order`: the palette, and so the slot, is ours to choose.
-
-The wordmark is drawn from the border's own bold 3x5, not `mkgfx.py`'s `FONT`: that one is cut for the HUD at 1x and the title at 2x, and at 3x its thin diagonals read weakly.
-
-`set_sgb_border()` (from GBDK's `sgb_border` example, with the two bugs GB-Protector fixed) has to run after `DISPLAY_ON`, because the transfer is a round trip: the Game Boy copies the border into VRAM, draws it on the LCD in a known order, and the SGB reads the picture back a byte at a time. That leaves VRAM holding border tiles, so the tile bank is reloaded and the title redrawn afterwards — inside the gate, so a DMG never pays for it. The reload runs with the display off, which is the cheaper way round rather than a requirement: GBDK's VRAM writers wait out modes 2 and 3 before every byte they write, so nothing is dropped either way, but with the LCD stopped they have no reason to wait, and that is more than half the frame. It also needs four frames of settling first for a PAL SNES.
-
-Everything is behind `sgb_check()`, so on a DMG the boot is exactly what it was. The ROM announces itself SGB-enhanced with `-Wm-ys`; without that flag an SGB treats the cart as an ordinary Game Boy and shows no border at all.
-
-`make sgb-test` is what guards the transfer, and it is worth having because the round trip has no other vantage point — a size or tile count gone wrong leaves the border quietly broken on hardware, which is what the stock GBDK example did (it transferred nothing). PyBoy answers `sgb_check()` yes, so the shipped ROM runs the transfer under the emulator and the test compares the bytes the SGB ends up holding against `src/border_data.c` itself. What it cannot check is the picture a real machine draws — but mGBA can, and does: 0.10.5 has SGB support built in, needing no `sgb_bios.bin` (there is none on this machine), so `mgba build/slingshot.gb` draws the whole border, matching `art/border_sgb.png` to the SGB's 15-bit colours. (This paragraph used to end "mgba will show nothing". That was wrong: the border was verifiable here all along, and the palette fault above went unnoticed for as long as it did because of it.)
-
-The border costs about 6.3 KB of ROM. That fits because an unbanked GBDK build is a flat 32 KB image — the linker sets `_CODE`'s base but no size, and MBC1's power-on ROM bank is 1, so the file layout is the memory map. Bank 0 data ends at 0x54A0, leaving some 10.8 KB. That headroom is only usable while nothing switches banks: the first `SWITCH_ROM` puts bank 0 back under a 16 KB ceiling, and the border data would have to move into a bank of its own at that point (`png2asset -b 1`; it already emits the `BANKREF` for it).
-
+`make emu-test` needs `pip install "pyboy>=2.8.0" pillow`; `PYTHON=...` picks
+the interpreter, defaulting to `python3`.
 
 ## Levels
 
-Each level is a plain text file, 20 characters per row, aligned to the bottom of the grid, drawn with `W` wood, `S` stone, `I` ice, `T` target and `.` empty. An optional `# shots N` line sets that level's shot budget (default 3) and an optional `# needs A|B|C|D` line declares the projectile type the level is built around (default A). Files are played in name order, so `01.txt` is level 1. `tools/mklevels.py` turns them into `src/levels.h`, and the select screen shows `NEEDS B` for a level that asks for one.
+Each level is a text file with rows of 20 characters, aligned to the bottom of
+the grid:
 
-There is a fourth type, `D`, the pierce drill: a second A press mid-flight turns the ball into a drill that keeps flying through the cells it dents until the ability shot ends — nothing level-specific uses it yet, it is live through the normal B cycle.
+| Character | Cell |
+|---|---|
+| `W` | Wood |
+| `S` | Stone |
+| `I` | Ice |
+| `T` | Target |
+| `.` | Empty |
 
-Shot budgets are measured too: `./build/check_levels --par` prints, per level, the minimum number of shots any search can win in (`par`, over the sampled trigger set) beside the configured budget. Level 1's stone box and the golden-replay level 3 keep their 3-shot budget on purpose (the emulator regression sessions pin them), but levels 2 and 4-9 were measured at par 1 against a budget of 3 — three stars for two spare shots, for free — and were retuned to `# shots 2`. On a budget of par+1 the best a finish can leave is one spare shot, so those levels now top out at two stars; that is the tightening doing its job.
+Two optional directives set the rules:
 
-The difficulty is measured, not guessed, and `test_levels_are_winnable` does the measuring: it plays every level on its own budget with a greedy brute force over all 128 angle/power pairs and every type, and fails if no type can finish it. It also prints how many first shots win each level outright — levels 1-10 are ordered by that number, so the file order is the measured difficulty order. Level 7's glass box is the one that has drifted out of it (8 one-shot wins against level 6's 2) since breaking through a cell started costing one damage bucket instead of two, so it wants a look when the levels are next reordered. It checks each level is stable before the first shot too, which catches a cell that would collapse under the player's feet.
-
-`test_late_levels_need_a_type` checks the `# needs` declaration is true rather than wishful: for every level that asks for one, no standard shot may win it outright and a greedy play with the standard type must fail, while the declared type must win. Levels 11-13 are split levels (targets spread further apart than one trajectory can cover) and 14-19 are boost levels (a long one-cell tunnel that shakes off split shards and that only a shot which speeds up mid-flight still has enough speed to break through at the far end).
-
-Levels 20-23 are tower-collapse levels: the target sits directly under a tower, and the shot's job is to break the support so the tower falls three or more rows onto the target. A 3-row fall destroys a target, while the wood or stone faller survives. Level 20 is a single ice keystone, 21 pairs two of them, 22 hides the keystone behind an ice shield so only a boost keeps enough speed to break it (`# needs B`), and 23 knocks out one bridge pier so the span peels onto two targets.
-
-## How the simulation works
-
-- 20x18 grid of 8x8 cells. Rows 16 and 17 are indestructible ground.
-- Materials: wood (4 HP), stone (4 HP, takes half damage), ice (2 HP, takes double), target (2 HP).
-- Shot damage depends on speed at impact (four buckets). A shot that breaks a cell keeps flying, a quarter slower; a shot that only dents one stops. The buckets are about 1.4x apart, so a quarter is roughly the one bucket a boost buys back — halving cost two at once, which left every shot that punched through a wall arriving in the weakest bucket with nothing left to break anything with. A cell that has taken damage is drawn cracked, so a shot that only chips something still leaves a mark and the next identical shot is not a surprise.
-- Collapse runs in steps from the bottom row up. A cell with nothing below falls one cell unless both horizontal neighbours are solid (so bridges hold until a pier goes). Falling 2+ cells damages the cell that lands and what it lands on; a stack that falls together does not damage itself.
-- Positions are whole pixels plus an 8-bit fraction, because a 16-bit 8.8 value cannot hold 160 px. Velocities are 8.8. No floating point and no 32-bit maths, so it fits the Game Boy CPU.
-- The sim reports the material of the last cell it damaged (`Sim.hit_mat`) and the front end voices it, so every hit makes a crunch pitched by material and a target pops — including a hit that only dents a cell and leaves it cracked. Sound is the front end's business: `sim.h` has no hardware calls, it just says what happened.
-- The same event drives the puff of dust: four specks are thrown out of the point the ball hit — the one place the front end learns a ball impact happened, and only while the shot was airborne, because a dented cell stops it and a collapse's damage arrives in settling state where the ball is frozen. A fall that *destroys* a cell is the exception: the sim reports the destroyed cell's position (`Sim.chain_x`/`chain_y` beside the chain points), and that burst puffs out of the fall site itself. The specks carry their own twelve-frame life and are aged every frame whatever the simulation is doing, so a burst cannot outlive the shot that caused it.
-- A collapse step that moves two or more cells shakes the background for ten frames. Collapses are small — over every shot on every level, one cell moves 49% of the time, two 33%, three 16%, four 2.6%, and nothing bigger ever happens — so the bar is at two and one cell is left as the ordinary settling droop. The shake moves the background layer only, never the window the HUD is on, and the map outside the play field is blanked at boot so scrolling into it shows nothing.
-- Cells destroyed by a collapse score double — the chain bonus. The sim reports the frame's bonus in `sim.chain_points` (an event field like `hit_mat`) and, beside it, the first destroyed cell's position (`chain_x`/`chain_y`); the front end slides the window up one row for `CHAIN_FRAMES` frames so a "CHAIN +nn" line appears under the HUD while a fall is doing the work, and puffs the dust out of that cell — score, flash, sound and sight all say the same thing now. The window has no other user, so the flash borrows its blank row; every restore is gated on the window still being the HUD.
-- `proj_ballistic_frame()` is the same step the real flight uses, so the aim preview arc will match the shot exactly.
-
-## Tuning
-
-Everything is a constant at the top of `src/sim.h` (gravity, HP, damage multipliers, scores, launch point) or in `tools/mktables.py` (angle and power ranges). Changing collapse or damage rules will fail `test_golden_replay`; once the new behaviour is deliberate, run `UPDATE_GOLDEN=1 ./build/test_sim` and paste the new hash into the test.
-
-The front end's own feel is knobs at the top of `src/main.c` too, and none of them has a right answer on paper: the `SFX_*` ones for the sound, `PUFF_*` for how far and how long a puff of dust flies, and `SHAKE_FRAMES`/`SHAKE_MIN_FALLS` for the shake. `make run` is their only acceptance test. The title's tune is also a knob: its note table is C text in `main.c` (`title_notes`, (NR23, NR24) period pairs with `(0, 0)` rests), and `tools/render_titles.py` renders it to a WAV straight from the source, so "is the tune any good" becomes listen-and-edit instead of flash-and-listen: `python3 tools/render_titles.py /tmp/gb-titles.wav && afplay /tmp/gb-titles.wav`.
-
-GBDK ships no sound code at all — only the hardware registers — so the sound is all direct APU writes: the sequencer is `sfx_jingle`/`sfx_frame` (one note per frame budget, rests and holds built from `(0, 0)` pairs, a loop flag for the title), and each channel has small helpers (ch1 the launch sweep, ch2 notes and jingles, ch4 the impacts). Full in-game music would want hUGEDriver and is still open.
-
-## A compiler note (SDCC on gbz80)
-
-SDCC compiles `field != other` as `sub a,(hl)`, which leaves `A` holding the **difference** while its backend still believes `A` holds `field`. Anything that reuses that value gets the difference instead, and nothing in the C source shows it:
-
-```c
-if (sim.state != last_state) {
-    uint8_t st = sim.state;     /* st is sim.state - last_state, not sim.state */
-    if (st == S_WON) ...        /* 3 - 2 = 1, so this is false on a win */
+```text
+# shots 2
+# needs C
 ```
 
-That is not a paraphrase — the emitted assembly stores the clobbered register into the local. In this codebase it silently killed the win and lose splash screens *and* the aim preview (the `S_AIM` test sat in the same block), so every shot after the first had no arc.
+`# shots N` is the shot budget (default 3) and `# needs A|B|C|D` declares the
+projectile the level is built for (default A). Files play in name order, so
+`levels/01.txt` is level 1. `tools/mklevels.py` turns them into `src/levels.h`.
 
-**The rule:** a field that is compared more than once must be declared **`volatile`**. `sim.state` is `volatile` in the `Sim` struct (`src/sim.h`), which forces every read — including a local's initializer — through memory, so the backend cannot satisfy it from the clobbered accumulator. A `volatile` local alone is *not* enough: it guards the later tests, but its initializer's read of the field is still ordinary, and the store of the difference *is* the bug:
+Shot budgets are measured, not guessed: `./build/check_levels --par` prints the
+minimum number of shots any search can win in beside the configured budget.
+Most levels are set to par+1 — 29 levels run on two shots, 20 on three, and one
+on four.
 
-```c
-volatile uint8_t st = sim.state;    /* local: guards the tests below (also belt-and-suspenders) */
-                                    /* field, sim.h: guards this initializer itself */
+## How it works
+
+The simulation is deliberately small: one header and no `sim.c`.
+
+```text
+src/sim.h            game logic: grid, materials, fixed-point flight, damage,
+                     collapse, win/lose. Header-only, no hardware calls.
+src/main.c           Game Boy front end: input, aiming, drawing, level select, save
+src/tables.h         generated by tools/mktables.py (launch velocities)
+src/gfx.c/.h         generated by tools/mkgfx.py (tiles)
+src/levels.h         generated by tools/mklevels.py from levels/*.txt
+src/sgb_border.c/.h  Super Game Boy border transfer (CHR_TRN/PCT_TRN)
+levels/*.txt         the 50 levels, one ASCII grid each
+tests/test_sim.c     host tests, including a golden replay
+tests/emu_replay.py  replays the same golden game on the real ROM in PyBoy
+tools/               generators, the level solver and the assembly checker
 ```
 
-**How to check:** `make check-asm` builds the assembly with `lcc -S` (with `GBDKDIR` set) and scans the listing for both shapes of the bug — a difference stored into memory after a comparison with no intervening reload, and a single load feeding two branch-consumed comparisons (`tools/check_asm.py` is a plain stdlib script; run it with `--self-test` to see it fire on a crafted bad listing). Correct code reloads before each test; a single `ld a,(#(...+offset))` followed by several branch-consumed `sub`s on that same `A` is the bug. Anywhere in this codebase shaped like `if (X.f != y) { ... if (X.f == c) ... }` is worth a look. Run it whenever the toolchain changes (the miscompile has only been observed on some SDCC versions — it does *not* reproduce with every one).
+`src/sim.h` contains no `<gb/gb.h>` include and no hardware access. That is what
+lets the same code run under gcc on the host and SDCC on the Game Boy: the
+front end reads the pad, calls `sim_tick()`, and draws the result.
 
-`make emu-test` came within an inch of not mattering either. With the bug in place, the block's own writes corrupt `last_state`: on a settle frame it computes `st = 2 - 2 = 0`, matches `st == S_AIM`, sets `arc_dirty` spuriously, and stores **0** into `last_state`; the next settle frame computes `2 - 0 = 2` and stores 2 back. So `last_state` alternates between 0 and 2, and whether a win draws the splash is decided by which phase the settle frames happen to count out — an earlier `3 - 0 = 3` works by pure accident, while `3 - 2 = 1` kills it. A replay cannot lean on its own inputs here: the outcome depends on the corrupted bookkeeping's phase, which the replay does not control deliberately. Verified by reintroducing the bug in the C source and running the suite: the golden win and the lose replay both pass (they landed on the accident), the early-win session fails. Now that the early-win session exists, the suite has a case on the other phase — and `make check-asm` guards the miscompile itself, on whichever toolchain builds the ROM, which is the version-sensitive part this note describes.
+Some invariants worth knowing before changing things:
+
+- **Fixed point.** Positions are whole pixels plus a separate 8-bit fraction
+  (a 16-bit 8.8 value cannot hold 160 px); velocities and gravity are 8.8.
+  There is no floating point and no 32-bit arithmetic in `sim.h`.
+- **One flight step.** `proj_ballistic_frame()` is shared by real flight and by
+  the dotted aim-preview arc, so the preview cannot drift from the shot.
+- **Generated files.** `src/tables.h`, `src/gfx.*` and `src/levels.h` are
+  outputs. Edit `tools/mktables.py`, `tools/mkgfx.py`, `tools/mklevels.py` or
+  `levels/*.txt`, never the generated file.
+- **Material ids are tile ids.** The `M_*` enum must stay aligned with the
+  `TILES` order in `tools/mkgfx.py`; the renderer returns a material directly as
+  a tile number.
+- **The `Sim` layout is read by offset.** `tests/emu_replay.py` imports
+  `OFF_*` constants from `build/sim_offsets.json`, regenerated from the real
+  header before every `make emu-test` run. Add new fields last, and add any
+  field the emulator test reads to `tests/sim_offsets_probe.c`.
+
+### Testing
+
+`make test` runs 1,400+ host-side assertions plus a golden replay whose FNV hash
+pins the outcome of three fixed shots. `make emu-test` plays the same game on
+the ROM in PyBoy and compares the grid hash, which is what catches SDCC-vs-gcc
+divergence; it also checks the front end, the splashes, sprite animation, the
+HUD, the chain flash and the battery save across two emulator sessions.
+
+Any deliberate change to collapse or damage rules will fail the golden replay.
+Re-record it with `UPDATE_GOLDEN=1 make test`, paste the printed hash into
+`GOLDEN` in `tests/test_sim.c`, and update the matching constants in
+`tests/emu_replay.py`.
+
+`test_levels_are_winnable` brute-forces every angle/power pair and projectile
+type on every level, and prints how many first shots win each one outright.
+`test_late_levels_need_a_type` proves that every `# needs` declaration is true:
+no standard shot may win the level, and the declared type must.
+
+## Super Game Boy border
+
+On a Super Game Boy the boot installs a 256x224 border around the game — a
+launch rig at dusk, framing the screen in wood. The art is
+`art/border_sgb.png`, drawn by `tools/mkborder.py` and converted to
+`src/border_data.c` by `png2asset`. It costs about 6.3 KB of ROM.
+
+![Super Game Boy border](art/border_sgb.png)
+
+The transfer is a round trip: the Game Boy copies the border into VRAM, draws it
+in a known order, and the SGB reads the picture back. Everything is behind
+`sgb_check()`, so a DMG boots exactly as before. `make sgb-test` is the guard —
+it boots the ROM with SGB processing on and compares the bytes the SGB receives
+against `src/border_data.c`.
+
+## An SDCC note
+
+SDCC's gbz80 backend compiles `field != other` as `sub a,(hl)` and leaves `A`
+holding the **difference**, while still believing it holds `field`. Reusing that
+value gets the difference instead, and nothing in the C source shows it. It
+silently broke the win/lose splashes and the aim preview here.
+
+The rule: **a field compared more than once must be `volatile`.** `sim.state`
+is `volatile` in the `Sim` struct, which forces every read — including a local's
+initializer — through memory. `make check-asm` builds the assembly and scans for
+both shapes of the bug; run it whenever the toolchain changes.
+
+## Status
+
+Phases 0–5 of the build plan are complete: tooling, the simulation core,
+rendering and aiming, the collapse animation and HUD, fifty levels with
+progression and a battery save, and projectile variety. Phase 6 (polish) has
+sound effects written straight to the APU, impact puffs, screen shake and the
+Super Game Boy border. In-game music is still open.
+
+The detailed build plan is in
+[`gb-slingshot-build-plan.md`](gb-slingshot-build-plan.md).

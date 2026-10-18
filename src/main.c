@@ -729,6 +729,7 @@ static void show_title(void)
         set_bkg_tile_xy(x, 16, TILE_GROUND_TOP);
         set_bkg_tile_xy(x, 17, TILE_GROUND);
     }
+    bkg_text(5, 12, "BY ZAPSKI");
     bkg_text(5, 14, "PRESS START");
 }
 
