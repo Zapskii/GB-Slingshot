@@ -131,7 +131,7 @@ enum { W_HUD = 0, W_SPLASH, W_SELECT };
 #define MBC1_RAM_ENABLE (*(volatile uint8_t *)0x0000)
 #define MBC1_RAM_BANK   (*(volatile uint8_t *)0x4000)
 
-#define SAVE_MAGIC 0x5A             /* marks RAM as written by this game */
+#define SAVE_MAGIC 0x5B             /* marks RAM as written by this game */
 
 static void load_stars(void)
 {

@@ -22,7 +22,7 @@ DEFAULT_NEEDS = "A"
 # Must match the PT_* enum order in sim.h.
 PT = {"A": 0, "B": 1, "C": 2, "D": 3}
 
-# ponytail: no RLE. The plan called for it, but all 24 levels together are a few
+# ponytail: no RLE. The plan called for it, but all 23 levels together are a few
 # hundred bytes of _CODE out of 32 KB. Add RLE here (and a decoder in main.c) only
 # if the level data ever gets big enough to crowd the ROM.
 

@@ -4,7 +4,7 @@
 
 #include <stdint.h>
 
-#define NUM_LEVELS 24
+#define NUM_LEVELS 23
 
 static const char *const level_0[] = {
     "....................",
@@ -100,18 +100,10 @@ static const char *const level_11[] = {
     "....................",
     "....................",
     "....................",
-    "....T..T..T..T..T...",
-    "....WW.WW.WW.WW.WW..",
-};
-static const char *const level_12[] = {
-    "....................",
-    "....................",
-    "....................",
-    "....................",
     "....T...T...T...T...",
     "....WW..WW..WW..WW..",
 };
-static const char *const level_13[] = {
+static const char *const level_12[] = {
     "....................",
     "....................",
     "....................",
@@ -119,7 +111,7 @@ static const char *const level_13[] = {
     ".....T.....T.....T..",
     ".....WWW...WWW...WWW",
 };
-static const char *const level_14[] = {
+static const char *const level_13[] = {
     "........SSSSSSS.....",
     "........SSSSSSS.....",
     "........SSSSSSS.....",
@@ -137,7 +129,7 @@ static const char *const level_14[] = {
     "........S.....S.....",
     "........SSSSSSS.W.T.",
 };
-static const char *const level_15[] = {
+static const char *const level_14[] = {
     "........SSSSSSSS....",
     "........SSSSSSSS....",
     "........SSSSSSSS....",
@@ -155,7 +147,7 @@ static const char *const level_15[] = {
     "........S......S....",
     "........SSSSSSSS.W.T",
 };
-static const char *const level_16[] = {
+static const char *const level_15[] = {
     "........SSSSSSS.....",
     "........SSSSSSS.....",
     "........SSSSSSS.....",
@@ -172,6 +164,24 @@ static const char *const level_16[] = {
     "........SSSSSSS.....",
     "........S.....S.....",
     "........SSSSSSS.W.T.",
+};
+static const char *const level_16[] = {
+    "........SSSSSSSS....",
+    "........SSSSSSSS....",
+    "........SSSSSSSS....",
+    "........SSSSSSSS....",
+    "........SSSSSSSS....",
+    "........SSSSSSSS....",
+    "........SSSSSSSS....",
+    "........SSSSSSSS....",
+    "........SSSSSSSS....",
+    "........SSSSSSSS....",
+    "........SSSSSSSS....",
+    "........SSSSSSSS....",
+    "........SSSSSSSS....",
+    "........SSSSSSSS....",
+    "........S......S....",
+    "........SSSSSSSS.W.T",
 };
 static const char *const level_17[] = {
     "........SSSSSSSS....",
@@ -189,7 +199,7 @@ static const char *const level_17[] = {
     "........SSSSSSSS....",
     "........SSSSSSSS....",
     "........S......S....",
-    "........SSSSSSSS.W.T",
+    "........SSSSSSSSW..T",
 };
 static const char *const level_18[] = {
     "........SSSSSSSS....",
@@ -207,27 +217,9 @@ static const char *const level_18[] = {
     "........SSSSSSSS....",
     "........SSSSSSSS....",
     "........S......S....",
-    "........SSSSSSSSW..T",
-};
-static const char *const level_19[] = {
-    "........SSSSSSSS....",
-    "........SSSSSSSS....",
-    "........SSSSSSSS....",
-    "........SSSSSSSS....",
-    "........SSSSSSSS....",
-    "........SSSSSSSS....",
-    "........SSSSSSSS....",
-    "........SSSSSSSS....",
-    "........SSSSSSSS....",
-    "........SSSSSSSS....",
-    "........SSSSSSSS....",
-    "........SSSSSSSS....",
-    "........SSSSSSSS....",
-    "........SSSSSSSS....",
-    "........S......S....",
     "........SSSSSSSSWW.T",
 };
-static const char *const level_20[] = {
+static const char *const level_19[] = {
     "........S...........",
     "........S...........",
     "........S...........",
@@ -239,7 +231,7 @@ static const char *const level_20[] = {
     "......S...S.........",
     "......S.T.S.........",
 };
-static const char *const level_21[] = {
+static const char *const level_20[] = {
     "........S......S....",
     "........S......S....",
     "........S......S....",
@@ -251,7 +243,7 @@ static const char *const level_21[] = {
     "......S...S..S...S..",
     "......S.T.S..S.T.S..",
 };
-static const char *const level_22[] = {
+static const char *const level_21[] = {
     "..........S.........",
     "..........S.........",
     "..........S.........",
@@ -263,7 +255,7 @@ static const char *const level_22[] = {
     ".......S.S...S......",
     ".......S.ST..S......",
 };
-static const char *const level_23[] = {
+static const char *const level_22[] = {
     "....................",
     "....................",
     "....................",
@@ -300,11 +292,10 @@ static const char *const *const level_rows[NUM_LEVELS] = {
     level_20,
     level_21,
     level_22,
-    level_23,
 };
 
-static const uint8_t level_height[NUM_LEVELS] = { 6, 7, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 16, 16, 16, 16, 16, 16, 10, 10, 10, 10 };
-static const uint8_t level_shots[NUM_LEVELS] = { 3, 2, 3, 2, 2, 2, 2, 2, 2, 3, 2, 4, 2, 1, 2, 2, 1, 1, 1, 1, 3, 4, 1, 3 };
-static const uint8_t level_needs[NUM_LEVELS] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0 };
+static const uint8_t level_height[NUM_LEVELS] = { 6, 7, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 16, 16, 16, 16, 16, 16, 10, 10, 10, 10 };
+static const uint8_t level_shots[NUM_LEVELS] = { 3, 2, 3, 2, 2, 2, 2, 2, 2, 3, 2, 2, 1, 2, 2, 1, 1, 1, 1, 3, 4, 1, 3 };
+static const uint8_t level_needs[NUM_LEVELS] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0 };
 
 #endif
