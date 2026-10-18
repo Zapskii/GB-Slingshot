@@ -118,11 +118,11 @@ Each phase ends with something you can run in mgba.
 - Type D: the pierce drill — a second A press turns the ball into a drill that keeps flying through the cells it dents for the rest of the flight (ground still stops it). Shipped instead of the explosive idea; the drill is a new damage *mode* the other three can't imitate, and the solvability check proved levels 11 to 20 winnable under it. Each type also flies its own ball tile so the B cycle reads.
 - Each ability is a few lines in `sim.h` plus tests.
 - **Done when:** levels 11 to 20 each need a particular projectile type.
-- Open: no level yet declares `# needs D` — design some pierce puzzle levels (22+).
+- Open: no level yet declares `# needs D` — design some pierce puzzle levels (25+).
 
 ### Phase 6: Polish (open-ended)
 - Done: particle puffs, screen shake on big collapses, sound effects, the graphical boot title (the doubled font logo plus the game's own tiles — sling, arc, stars, ground line — so it needs no new art beyond the logo slices), the Super Game Boy border, and the difficulty pass for levels 1 to 20 (`check_levels --par`).
-- Levels 21 to 30. Include puzzle levels for the pierce drill (`# needs D`).
+- Levels 25 to 30 (21 to 24 are tower-collapse levels). Include puzzle levels for the pierce drill (`# needs D`).
 - Super Game Boy border. Done: `sgb_border.c/h` reused from GB-Protector (it is
   the GBDK example with two transfer bugs fixed), with new art of its own
   (`tools/mkborder.py` -> `png2asset` -> `src/border_data.c`) rather than a

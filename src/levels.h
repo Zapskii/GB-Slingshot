@@ -4,7 +4,7 @@
 
 #include <stdint.h>
 
-#define NUM_LEVELS 20
+#define NUM_LEVELS 24
 
 static const char *const level_0[] = {
     "....................",
@@ -227,6 +227,54 @@ static const char *const level_19[] = {
     "........S......S....",
     "........SSSSSSSSWW.T",
 };
+static const char *const level_20[] = {
+    "........S...........",
+    "........S...........",
+    "........S...........",
+    "........S...........",
+    "........S...........",
+    "........S...........",
+    "......SSISS.........",
+    "......S...S.........",
+    "......S...S.........",
+    "......S.T.S.........",
+};
+static const char *const level_21[] = {
+    "........S......S....",
+    "........S......S....",
+    "........S......S....",
+    "........S......S....",
+    "........S......S....",
+    "........S......S....",
+    "......SSISS..SSISS..",
+    "......S...S..S...S..",
+    "......S...S..S...S..",
+    "......S.T.S..S.T.S..",
+};
+static const char *const level_22[] = {
+    "..........S.........",
+    "..........S.........",
+    "..........S.........",
+    "..........S.........",
+    "..........S.........",
+    ".........SSSS.......",
+    ".......I.WWWWS......",
+    ".......S.S...S......",
+    ".......S.S...S......",
+    ".......S.ST..S......",
+};
+static const char *const level_23[] = {
+    "....................",
+    "....................",
+    "....................",
+    "....................",
+    "....................",
+    ".....WWWWWWWWWW.....",
+    ".....I........S.....",
+    ".....S........S.....",
+    ".....S........S.....",
+    ".....S..T..T..S.....",
+};
 
 static const char *const *const level_rows[NUM_LEVELS] = {
     level_0,
@@ -249,10 +297,14 @@ static const char *const *const level_rows[NUM_LEVELS] = {
     level_17,
     level_18,
     level_19,
+    level_20,
+    level_21,
+    level_22,
+    level_23,
 };
 
-static const uint8_t level_height[NUM_LEVELS] = { 6, 7, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 16, 16, 16, 16, 16, 16 };
-static const uint8_t level_shots[NUM_LEVELS] = { 3, 2, 3, 2, 2, 2, 2, 2, 2, 3, 2, 3, 2, 1, 2, 2, 1, 1, 1, 1 };
-static const uint8_t level_needs[NUM_LEVELS] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1 };
+static const uint8_t level_height[NUM_LEVELS] = { 6, 7, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 16, 16, 16, 16, 16, 16, 10, 10, 10, 10 };
+static const uint8_t level_shots[NUM_LEVELS] = { 3, 2, 3, 2, 2, 2, 2, 2, 2, 3, 2, 4, 2, 1, 2, 2, 1, 1, 1, 1, 3, 4, 1, 3 };
+static const uint8_t level_needs[NUM_LEVELS] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0 };
 
 #endif

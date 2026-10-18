@@ -47,6 +47,11 @@ S_SETTLE = _SIM["s_settle"]
 S_WON = _SIM["s_won"]
 S_LOST = _SIM["s_lost"]
 
+# The select-cursor walk must cover any saved resume position, so take the level
+# count from the generated table rather than hardcoding it.
+with open("src/levels.h") as _f:
+    NUM_LEVELS = int(re.search(r"#define NUM_LEVELS (\d+)", _f.read()).group(1))
+
 # Front-end constants from src/main.c and src/gfx.h.
 REG_WY = 0xFF4A
 REG_SCY, REG_SCX = 0xFF42, 0xFF43        # screen shake moves the background only
@@ -251,7 +256,7 @@ class Game:
     def pick_level(self, n):
         """Walk the select cursor to level n. Left first, so a save left over
         from an earlier run cannot move the starting point."""
-        for _ in range(20):
+        for _ in range(NUM_LEVELS):
             self.press("left")
         for _ in range(n):
             self.press("right")

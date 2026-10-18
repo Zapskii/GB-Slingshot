@@ -12,9 +12,9 @@ See `gb-slingshot-build-plan.md` for the full plan.
 | 1. Simulation core (`src/sim.h`) | Done. 1171 host-side checks passing |
 | 2. Rendering and aiming | Done. D-pad aiming, preview arc, firing, cells break on screen. ROM replay matches the host golden hash |
 | 3. Collapse animation, win/lose screens, HUD | Done. Collapsing cells slide as sprites, a window-layer HUD tracks shots/targets/score, win and lose splash screens |
-| 4. Levels and progression | Done. 10 levels as ASCII files, a level select, a star rating from shots left, and a battery save so the stars survive a reset |
+| 4. Levels and progression | Done. 24 levels as ASCII files, a level select, a star rating from shots left, and a battery save so the stars survive a reset |
 | 5. Projectile variety | Done. Four projectile types, a second A press mid-flight to use the type's ability, levels 11-20 each gated on one type |
-| 6. Polish (open-ended) | Started. Sound effects written straight to the APU: launch, wood/stone/ice impacts pitched by material, a target pop, and win and lose jingles. The title screen has its own looping tune (the jingle sequencer slowed down; `tools/render_titles.py` renders it to a WAV for tuning by ear). A shot kicks up a puff of dust where it lands, and a collapse of two or more cells shakes the screen. The graphical boot title is built, and so is the Super Game Boy border: on an SGB the boot installs a 256x224 border around the game — a launch rig at dusk, framing the screen in wood. In-game music and levels 21-30 are not |
+| 6. Polish (open-ended) | Started. Sound effects written straight to the APU: launch, wood/stone/ice impacts pitched by material, a target pop, and win and lose jingles. The title screen has its own looping tune (the jingle sequencer slowed down; `tools/render_titles.py` renders it to a WAV for tuning by ear). A shot kicks up a puff of dust where it lands, and a collapse of two or more cells shakes the screen. The graphical boot title is built, and so is the Super Game Boy border: on an SGB the boot installs a 256x224 border around the game — a launch rig at dusk, framing the screen in wood. In-game music and levels 25-30 are not |
 
 ## Commands
 
@@ -107,6 +107,10 @@ Shot budgets are measured too: `./build/check_levels --par` prints, per level, t
 The difficulty is measured, not guessed, and `test_levels_are_winnable` does the measuring: it plays every level on its own budget with a greedy brute force over all 128 angle/power pairs and every type, and fails if no type can finish it. It also prints how many first shots win each level outright — levels 1-10 are ordered by that number, so the file order is the measured difficulty order. Level 7's glass box is the one that has drifted out of it (8 one-shot wins against level 6's 2) since breaking through a cell started costing one damage bucket instead of two, so it wants a look when the levels are next reordered. It checks each level is stable before the first shot too, which catches a cell that would collapse under the player's feet.
 
 `test_late_levels_need_a_type` checks the `# needs` declaration is true rather than wishful: for every level that asks for one, no standard shot may win it outright and a greedy play with the standard type must fail, while the declared type must win. Levels 11-14 are split levels (targets spread further apart than one trajectory can cover) and 15-20 are boost levels (a long one-cell tunnel that shakes off split shards and that only a shot which speeds up mid-flight still has enough speed to break through at the far end).
+
+Levels 21-24 are tower-collapse levels: the target sits directly under a tower, and the shot's job is to break the support so the tower falls three or more rows onto the target. A 3-row fall destroys a target, while the wood or stone faller survives. Level 21 is a single ice keystone, 22 pairs two of them, 23 hides the keystone behind an ice shield so only a boost keeps enough speed to break it (`# needs B`), and 24 knocks out one bridge pier so the span peels onto two targets.
+
+Level 12's five-target split level was later raised to `# shots 4`: its measured par is 2, so three stars were unreachable on three shots.
 
 ## How the simulation works
 
