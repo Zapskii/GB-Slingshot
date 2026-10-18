@@ -252,7 +252,7 @@ static const char *const *const level_rows[NUM_LEVELS] = {
 };
 
 static const uint8_t level_height[NUM_LEVELS] = { 6, 7, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 16, 16, 16, 16, 16, 16 };
-static const uint8_t level_shots[NUM_LEVELS] = { 3, 2, 3, 3, 2, 2, 2, 2, 2, 3, 2, 3, 2, 1, 2, 2, 1, 1, 1, 1 };
+static const uint8_t level_shots[NUM_LEVELS] = { 3, 2, 3, 2, 2, 2, 2, 2, 2, 3, 2, 3, 2, 1, 2, 2, 1, 1, 1, 1 };
 static const uint8_t level_needs[NUM_LEVELS] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1 };
 
 #endif

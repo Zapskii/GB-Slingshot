@@ -65,16 +65,19 @@ void set_sgb_border(const unsigned char *tiledata, size_t tiledata_size,
         // example shipped set_bkg_data(0, 0, ...) here, transferring nothing.
         // Both blocks are uint8_t-counted, which caps a border at 128 + 127 =
         // 255 tiles; tools/mkborder.py keeps the art well under it and
-        // tests/sgb_border_test.py fails the build if it ever is not.
+        // tests/sgb_border_test.py fails the build if it ever is not. Exactly
+        // 128 tiles is block 0 only, so block 1 must not be transferred.
         uint8_t ntiles = (tiledata_size > 256 * 32) ? 0 : tiledata_size >> 5;
-        if (ntiles > 128U) {
+        if (ntiles >= 128U) {
             set_bkg_data(0, 255, tiledata);
             set_bkg_data(255, 1, tiledata + 255 * 16);
             SGB_TRANSFER((SGB_CHR_TRN << 3) | 1, SGB_CHR_BLOCK0);
             tiledata += (128 * 32);
             ntiles -= 128U;
-            set_bkg_data(0, ntiles << 1, tiledata);
-            SGB_TRANSFER((SGB_CHR_TRN << 3) | 1, SGB_CHR_BLOCK1);
+            if (ntiles > 0U) {
+                set_bkg_data(0, ntiles << 1, tiledata);
+                SGB_TRANSFER((SGB_CHR_TRN << 3) | 1, SGB_CHR_BLOCK1);
+            }
         } else {
             set_bkg_data(0, ntiles << 1, tiledata);
             SGB_TRANSFER((SGB_CHR_TRN << 3) | 1, SGB_CHR_BLOCK0);

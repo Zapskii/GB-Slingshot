@@ -664,6 +664,17 @@ static void show_splash(void)
 static void show_select(void)
 {
     uint8_t n = stars[cursor], s;
+    /* The menu owns the screen: no sprite from play may show through it.
+     * START/SELECT can arrive mid-shot, when the ball, the arc dots, sliding
+     * cells and puffs are all live. Only on entry, though: nothing in the menu
+     * loop re-shows a sprite, and repeating this on every cursor move pushed
+     * the window redraw past a frame and dropped the next button press. */
+    if (win_mode != W_SELECT) {
+        move_sprite(SPR_BALL, 0, 0);
+        hide_arc();
+        hide_falls();
+        hide_puffs();
+    }
     win_clear(GRID_H);
     move_win(7, 0);
     win_text(5, 3, "SLINGSHOT");

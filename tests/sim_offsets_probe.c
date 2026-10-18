@@ -2,11 +2,12 @@
  *
  * tests/emu_replay.py reads game state straight out of the SDCC-built map at
  * fixed field offsets. Those offsets used to be duplicate constants, so any
- * struct edit could silently desync them (src/sim.h carried a warning asking
- * new fields to go last, purely to keep the copies aligned). make emu-test
- * now regenerates build/sim_offsets.json from the real header before every
- * run, which makes this hand-maintained copy - and the put-new-fields-at-
- * the-end rule - obsolete. */
+ * struct edit could silently desync them; make emu-test now regenerates
+ * build/sim_offsets.json from the real header before every run, and the
+ * emulator test imports the values. Every field the test reads must be listed
+ * below. Keep 2-byte fields on even offsets: src/sim.h's sim_align_* typedefs
+ * enforce that under SDCC as well as the host, so new fields still belong at
+ * the end by default. */
 #include <stddef.h>
 #include <stdio.h>
 #include "sim.h"

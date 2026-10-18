@@ -19,9 +19,9 @@ See `gb-slingshot-build-plan.md` for the full plan.
 ## Commands
 
 ```
-make test           host-side tests for src/sim.h (needs only gcc and python3)
+make test           host-side tests for src/sim.h (needs only gcc or clang, and python3)
 make                build build/slingshot.gb (uses lcc if on PATH, otherwise Docker)
-make emu-test       replay the golden game through the ROM in a headless emulator (needs pyboy and pillow; PYTHON=... picks the interpreter, default python3)
+make emu-test       replay the golden game through the ROM in a headless emulator (needs "pyboy>=2.8.0" and pillow; PYTHON=... picks the interpreter, default python3)
 make sgb-test       check the Super Game Boy border transfer reaches the SGB intact
 make run            build and open in mgba
 make docker-image   build the GBDK-2020 toolchain image (see Dockerfile)

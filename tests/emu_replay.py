@@ -55,6 +55,7 @@ REG_NR10, REG_NR51 = 0xFF10, 0xFF25     # ch1 sweep and sound panning: both read
                                         # tune is checked through the audio buffer)
 LAUNCH_SWEEP = 0x15                     # main.c SFX_SWEEP, written by sfx_init
 BUDGET_GOLDEN = 3                       # levels.h level_shots[GOLDEN_LEVEL]
+BUDGET_NEXT = 2                         # levels.h level_shots[GOLDEN_LEVEL + 1]
 REG_NR42 = 0xFF21                       # ch4 envelope: write-only on hardware, but
 IMPACT_ENV = 0xF4                       # PyBoy latches it, and it reads 0 until a hit
 BKG_MAP = 0x9800                        # background map base, where the cells land
@@ -364,6 +365,8 @@ def main():
           "the APU is initialised (NR51=%02X)" % g.mem[REG_NR51])
     check(g.win_text(15).strip() == "PRESS A", "level select prompts for A")
     check(g.mem[SRAM] != SAVE_MAGIC, "a fresh cart has no save yet")
+    check(g.ball_sprites() == 0,
+          "no gameplay sprite shows through the level select (got %d)" % g.ball_sprites())
     g.snap("select")
 
     g.pick_level(GOLDEN_LEVEL)
@@ -509,14 +512,17 @@ def main():
     check(g.mem[SRAM] == SAVE_MAGIC, "winning writes the save")
     check(g.mem[SRAM + 1 + GOLDEN_LEVEL] == 1,
           "level %d's star is 1 in battery RAM" % (GOLDEN_LEVEL + 1))
-    check(g.byte(OFF_STATE) == S_AIM and g.byte(OFF_SHOTS_LEFT) == 3,
-          "START after a win loads the next level")
+    check(g.byte(OFF_STATE) == S_AIM and g.byte(OFF_SHOTS_LEFT) == BUDGET_NEXT,
+          "START after a win loads the next level (state %d, shots %d)"
+          % (g.byte(OFF_STATE), g.byte(OFF_SHOTS_LEFT)))
     check(g.grid_hash() != start_hash, "the next level is a different grid")
     check(g.mem[REG_WY] == HUD_ROW, "the HUD comes back for the next level")
 
     g.press("select")
     g.tick(6)
     check(g.win_text(3).strip() == "SLINGSHOT", "SELECT returns to the level select")
+    check(g.ball_sprites() == 0,
+          "SELECT mid-play leaves no ball sprite over the menu (got %d)" % g.ball_sprites())
     check(g.win_text(9).strip() == str(GOLDEN_LEVEL + 2),
           "the cursor moved on to the next level (got %r)" % g.win_text(9))
     g.stop()

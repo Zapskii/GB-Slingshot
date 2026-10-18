@@ -164,7 +164,7 @@ static void layer_reset(Layer *l)
     l->cap_s = l->n = 0;
 }
 
-#define MAX_LAYERS 4            /* one more than the largest shot budget */
+#define MAX_LAYERS 10           /* one more than mklevels.py's 9-shot maximum */
 
 static long total_sims;
 
@@ -246,6 +246,12 @@ static int solve_level(unsigned level, long states_budget, long sims_budget,
     const uint8_t start_why[4] = { 0, 0, 0, 255 };
 
     if (par_out) *par_out = 0;
+    if (shots >= MAX_LAYERS) {
+        fprintf(stderr, "check_levels: level %u has a %u-shot budget; "
+                "raise MAX_LAYERS to at least %u (currently %d)\n",
+                level + 1, shots, shots + 1, MAX_LAYERS);
+        exit(1);
+    }
     sim_load_ascii(&init, level_rows[level], level_height[level], shots);
     seen_init(&seen, states_budget);
     {   uint64_t h1, h2;

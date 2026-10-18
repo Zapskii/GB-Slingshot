@@ -530,6 +530,23 @@ static void test_chain_points_where(void)
     CHECK(s.chain_x == 0xFF && s.chain_y == 0xFF);
 }
 
+/* A landing damages the cell below before the falling cell, so when that one
+ * is what broke, the dust is at (x, r+1), not under the faller. */
+static void test_chain_points_when_below_dies(void)
+{
+    Sim s;
+    sim_init(&s, 1);
+    sim_set_cell(&s, 4, 15, M_ICE);     /* hp 2, mul 4: a raw 1 deals 2 and kills it */
+    sim_set_cell(&s, 4, 12, M_WOOD);    /* falls three rows onto it */
+    settle_grid(&s);
+    CHECK(s.chain_points == 5);         /* ice scores 5, doubled into the score */
+    CHECK(s.score == 10);
+    CHECK(s.chain_x == 4 && s.chain_y == 15);   /* the cell that broke */
+    CHECK(AT(&s, 4, 15) == M_WOOD && HP(&s, 4, 15) == 3); /* dented by the landing */
+    sim_tick(&s);
+    CHECK(s.chain_x == 0xFF && s.chain_y == 0xFF);
+}
+
 static void test_bridge_holds(void)
 {
     Sim s;
@@ -922,6 +939,7 @@ int main(void)
     RUN(test_long_fall_destroys_cells);
     RUN(test_chain_bonus_event);
     RUN(test_chain_points_where);
+    RUN(test_chain_points_when_below_dies);
     RUN(test_bridge_holds);
     RUN(test_bridge_collapses_when_pier_removed);
     RUN(test_fall_damages_what_it_lands_on);

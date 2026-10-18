@@ -3,13 +3,17 @@
 #   make test       host-side tests for src/sim.h (no GBDK needed)
 #   make check-asm  scan the SDCC assembly for the cached-accumulator miscompile
 #   make check-levels   brute-force that every level is winnable in its shot budget
-#   make emu-test   replay the golden game through the ROM in a headless emulator (pip install pyboy pillow)
+#   make emu-test   replay the golden game through the ROM in a headless emulator (pip install "pyboy>=2.8.0" pillow)
 #   make sgb-test   check the Super Game Boy border transfer reaches the SGB intact
 #   make docker-image   build the GBDK-2020 toolchain image used when lcc isn't on PATH
 #   make clean
 
 PYTHON       ?= python3
 HOST_CC      ?= gcc
+# implicit-conversion is a Clang sanitizer; GNU gcc rejects the whole compile.
+# Probe the compiler rather than matching its name.
+HOST_SAN     ?= -fsanitize=undefined -fno-sanitize-recover=all
+HOST_SAN     += $(shell $(HOST_CC) -x c -fsanitize=implicit-conversion -fsyntax-only /dev/null 2>/dev/null && echo -fsanitize=implicit-conversion)
 MGBA         ?= mgba
 DOCKER_IMAGE ?= gb-slingshot-gbdk
 
@@ -74,7 +78,7 @@ $(ROM): src/main.c src/sim.h src/sgb_border.c src/sgb_border.h $(GEN) $(BORDER)
 build/test_sim: tests/test_sim.c src/sim.h $(GEN)
 	@mkdir -p build
 	$(HOST_CC) -std=c99 -O1 -Wall -Wextra -Wno-unused-function \
-	           -fsanitize=undefined,implicit-conversion -fno-sanitize-recover=all \
+	           $(HOST_SAN) \
 	           -Isrc tests/test_sim.c -o $@ -lm
 
 test: build/test_sim
@@ -91,7 +95,7 @@ check-asm:
 build/check_levels: tools/check_levels.c src/sim.h src/levels.h src/tables.h
 	@mkdir -p build
 	$(HOST_CC) -std=c99 -O1 -Wall -Wextra \
-	           -fsanitize=undefined,implicit-conversion -fno-sanitize-recover=all \
+	           $(HOST_SAN) \
 	           -Isrc tools/check_levels.c -o $@ -lm
 
 check-levels: build/check_levels

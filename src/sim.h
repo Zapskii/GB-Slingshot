@@ -97,22 +97,25 @@ typedef struct {
     uint8_t settle_timer;
     uint16_t score;
     uint16_t flight_frames;
-    /* What the front end should show this frame: points just added for cells
-     * destroyed by the collapse (scored double, the chain bonus), 0 for
-     * nothing. Like hit_mat this is data, not a hardware call. Cleared at
-     * the top of sim_tick. */
-    uint16_t chain_points;
-    /* tests/emu_replay.py reads this struct by byte offset, but the offsets
-     * are regenerated mechanically on every emu-test run by
-     * tests/sim_offsets_probe.c (into build/sim_offsets.json), so new fields
-     * may go anywhere. The emulator checks that refer to a field must still
-     * be updated if its meaning changes. */
+    /* tests/emu_replay.py reads this struct by byte offset. It imports the
+     * offsets from build/sim_offsets.json, which tests/sim_offsets_probe.c
+     * generates from this header on every emu-test run, so every field the
+     * emulator test reads must also be listed in that probe. The two compilers
+     * still agree only while each 2-byte field lands on an even offset, which
+     * the sim_align_* typedefs below check under SDCC as well as the host: they
+     * are real build failures, not vacuous documentation. Add new fields last
+     * by default. */
     uint8_t nmoves;                     /* valid until the front end consumes them */
     FallMove moves[MAX_FALL_MOVES];
     /* What the front end should voice this frame: the material of the last cell
      * damage_cell() touched, 0 for nothing. Sound is the front end's business,
      * so this is data, not a hardware call. Cleared at the top of sim_tick. */
     uint8_t hit_mat;
+    /* What the front end should show this frame: points just added for cells
+     * destroyed by the collapse (scored double, the chain bonus), 0 for
+     * nothing. Like hit_mat this is data, not a hardware call. Cleared at
+     * the top of sim_tick. */
+    uint16_t chain_points;
     /* The first cell a fall landing destroyed this frame: the puff's ground
      * position (column, row). Valid while chain_points is nonzero; cleared
      * by sim_tick like hit_mat, never by sim_collapse_step — so a host test
@@ -214,6 +217,7 @@ static void sim_init(Sim *s, uint8_t shots)
     s->flight_frames = 0;
     s->nmoves = 0;
     s->hit_mat = M_EMPTY;
+    s->chain_points = 0;
     s->chain_x = 0xFF;
     s->chain_y = 0xFF;
 }
@@ -346,16 +350,18 @@ static uint8_t sim_collapse_step(Sim *s)
                     /* A fall that destroys cells scores them again: the
                      * chain bonus. Recorded in chain_points for the flash. */
                     uint16_t before = s->score;
-                    damage_cell(s, bidx, (uint8_t)(f - 1));
-                    damage_cell(s, idx, (uint8_t)(f - 1));
-                    s->chain_points = (uint16_t)(s->chain_points + (s->score - before));
-                    s->score = (uint16_t)(s->score + (s->score - before));
-                    /* The first destroyed cell of the frame points at the
-                     * dust: one puff burst is all the sprite budget allows. */
-                    if (s->score - before && s->chain_x == 0xFF) {
+                    /* The cell below takes the landing first. If it was what
+                     * broke, the dust belongs on it, one row under the faller. */
+                    if (damage_cell(s, bidx, (uint8_t)(f - 1)) && s->chain_x == 0xFF) {
+                        s->chain_x = x;
+                        s->chain_y = (uint8_t)(r + 1);
+                    }
+                    if (damage_cell(s, idx, (uint8_t)(f - 1)) && s->chain_x == 0xFF) {
                         s->chain_x = x;
                         s->chain_y = r;
                     }
+                    s->chain_points = (uint16_t)(s->chain_points + (s->score - before));
+                    s->score = (uint16_t)(s->score + (s->score - before));
                 }
             }
         }

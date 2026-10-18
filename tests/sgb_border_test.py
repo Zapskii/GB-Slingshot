@@ -16,15 +16,22 @@ stops answering yes the first check below fails and says so, rather than
 comparing two empty buffers and passing.
 
 What this cannot check: whether a real SGB detects the border, or how the
-finished border looks on a SNES. Needs: pip install pyboy pillow
+finished border looks on a SNES. Needs: pip install "pyboy>=2.8.0" pillow
 
     python3 tests/sgb_border_test.py build/slingshot.gb
 """
 import re
 import sys
+from importlib.metadata import version as package_version
 
 from PIL import Image
 from pyboy import PyBoy
+
+# pb.sgb.border_data arrived in PyBoy 2.8.0 (pyboy has no __version__).
+_v = package_version("pyboy")
+if tuple(int(p) for p in _v.split(".")[:2]) < (2, 8):
+    sys.exit("tests/sgb_border_test.py needs PyBoy >= 2.8.0 for pb.sgb.border_data; "
+             "found %s. pip install -U 'pyboy>=2.8.0'" % _v)
 
 REG_LCDC = 0xFF40
 ART = "art/border_sgb.png"
