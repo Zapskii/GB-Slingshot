@@ -889,6 +889,15 @@ void main(void)
         set_sgb_border(border_data_tiles, sizeof(border_data_tiles),
                        border_data_map, sizeof(border_data_map),
                        border_data_palettes, sizeof(border_data_palettes));
+        /* SGB palette 0 colours the game screen. A real SGB starts with a
+         * default, but Gearboy without the SGB boot ROM starts it black, so
+         * set it: the four DMG shades as plain greys (PAL01, from
+         * GB-SGB-Tooling's example/main.c). */
+        static const uint8_t sgb_grey_pal01[16] = {
+            (SGB_PAL_01 << 3) | 1,
+            0xFF, 0x7F, 0x94, 0x52, 0x4A, 0x29, 0x00, 0x00, /* white .. black */
+        };
+        sgb_transfer((uint8_t *)sgb_grey_pal01);
         /* Putting it right again. The transfer leaves VRAM full of border
          * tiles and the map holding the order they were shown in, and a tile
          * bank plus a 32x32 blank is far more than a vertical blank: it cannot
