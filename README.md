@@ -1,3 +1,5 @@
+[Play online at retro.zapski.com](https://retro.zapski.com)
+
 # GB-Slingshot
 
 ![GB-Slingshot title screen](art/screenshot.png)
@@ -30,14 +32,16 @@ and no game engine. The ROM is a single 32 KB image.
 
 ## Play
 
-You need a built ROM first: see [Building](#building). Then either
+Download `slingshot.gb` from the
+[latest release](https://github.com/Zapskii/GB-Slingshot/releases/latest), or
+build it yourself: see [Building](#building). Then either
 
 ```sh
 make run        # open build/slingshot.gb in mGBA
 ```
 
-or load `build/slingshot.gb` in any Game Boy emulator or flash cartridge. On a
-Super Game Boy, the border appears automatically.
+or load the ROM in any Game Boy emulator or flash cartridge. On a Super Game
+Boy, the border appears automatically.
 
 The full manual — controls, materials, projectiles, scoring and strategy — is
 in **[play.md](play.md)**. The short version:
@@ -223,6 +227,9 @@ rendering and aiming, the collapse animation and HUD, fifty levels with
 progression and a battery save, and projectile variety. Phase 6 (polish) has
 sound effects written straight to the APU, impact puffs, screen shake and the
 Super Game Boy border. In-game music is still open.
+
+Version 1.0 was released on 18 October 2026 and is available from the
+[releases page](https://github.com/Zapskii/GB-Slingshot/releases/latest).
 
 The detailed build plan is in
 [`gb-slingshot-build-plan.md`](gb-slingshot-build-plan.md).
